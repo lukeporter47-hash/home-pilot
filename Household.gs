@@ -1,73 +1,54 @@
 /**
- * PorterPilot — multi-household backend.
+ * PorterPilot — household account layer.
  *
- * Runs as a Google Apps Script web app deployed with:
+ * This is what makes the rest of the project (Backend.gs and every other
+ * module — Bar, Pets, Money, Contacts, Documents, Packing) multi-tenant
+ * without having to touch any of their own logic: they all read/write
+ * through Backend.gs's ss_(), and ss_() now resolves to *this* visitor's
+ * household Spreadsheet instead of a single bound Sheet.
+ *
+ * The web app is deployed with:
  *   Execute as:        User accessing the web app
  *   Who has access:    Anyone with a Google account
+ * so the visitor's own Google session is the login — there's no separate
+ * auth step. Their household Spreadsheet ID is stored in their own
+ * UserProperties (private to this script + that Google account).
  *
- * Because it executes as the visiting user, there is no separate sign-in
- * step and no external auth provider (Firebase, etc.) — the person's own
- * Google session *is* the login. Each person's household Spreadsheet ID is
- * remembered in their own UserProperties, which is private to (this script,
- * that Google account) and persists across visits.
- *
- * Joining an existing household (rather than creating a new one) works via
- * an invite link of the form:  <web app url>?hh=<spreadsheetId>
- * The admin shares the household Spreadsheet (Drive "can edit") with the
- * new member first, then sends them that link.
+ * Joining an existing household works via an invite link of the form
+ * <web app url>?hh=<spreadsheetId>. The admin shares the household
+ * Spreadsheet (Drive "can edit") with the new member first, then sends
+ * them that link.
  */
 
-var MARKER = 'PORTERPILOT_HOUSEHOLD_V1';
-var PROP_KEY = 'HOUSEHOLD_SHEET_ID';
-
-// ---------------------------------------------------------------------
-// Web app entry point
-// ---------------------------------------------------------------------
-function doGet(e) {
-  var tmpl = HtmlService.createTemplateFromFile('Index');
-  tmpl.inviteSheetId = (e && e.parameter && e.parameter.hh) ? e.parameter.hh : '';
-  return tmpl.evaluate()
-    .setTitle('PorterPilot')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
-
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
-}
-
-// ---------------------------------------------------------------------
-// Identity helpers
-// ---------------------------------------------------------------------
-function getMe_() {
-  var email = Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail();
-  return { email: email, name: email ? email.split('@')[0] : 'You' };
-}
+var HOUSEHOLD_MARKER = 'PORTERPILOT_HOUSEHOLD_V1';
+var HOUSEHOLD_PROP_KEY = 'HOUSEHOLD_SHEET_ID';
 
 function getWebAppUrl() {
   return ScriptApp.getService().getUrl();
 }
 
-// ---------------------------------------------------------------------
-// Called by the client on load
-// ---------------------------------------------------------------------
-function getMyHousehold() {
-  var me = getMe_();
-  var props = PropertiesService.getUserProperties();
-  var sheetId = props.getProperty(PROP_KEY);
+function getMe_() {
+  var email = Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail();
+  return { email: email, name: email ? email.split('@')[0] : 'You' };
+}
 
-  if (sheetId) {
-    var hh = readHousehold_(sheetId);
-    if (hh) return { me: me, household: hh };
-    // Stale pointer (file deleted / access revoked) — forget it and fall through.
-    props.deleteProperty(PROP_KEY);
-  }
-  return { me: me, household: null };
+// Cheap existence check used by doGet() to pick which page to serve.
+function currentHousehold_() {
+  var id = PropertiesService.getUserProperties().getProperty(HOUSEHOLD_PROP_KEY);
+  if (!id) return null;
+  return readHousehold_(id);
 }
 
 // ---------------------------------------------------------------------
-// Create a brand-new household
+// Called by Gate.html on load
 // ---------------------------------------------------------------------
+function getMyHousehold() {
+  var me = getMe_();
+  var hh = currentHousehold_();
+  if (!hh) PropertiesService.getUserProperties().deleteProperty(HOUSEHOLD_PROP_KEY); // forget a stale pointer
+  return { me: me, household: hh };
+}
+
 function createHousehold(name, peopleNames) {
   name = String(name || '').trim();
   if (!name) throw new Error('Please enter a household name.');
@@ -80,14 +61,10 @@ function createHousehold(name, peopleNames) {
 
   buildHouseholdSpreadsheet_(ss, name, peopleNames, me);
 
-  PropertiesService.getUserProperties().setProperty(PROP_KEY, ssId);
-
+  PropertiesService.getUserProperties().setProperty(HOUSEHOLD_PROP_KEY, ssId);
   return { me: me, household: readHousehold_(ssId) };
 }
 
-// ---------------------------------------------------------------------
-// Join a household you've been invited to (admin already shared the Sheet)
-// ---------------------------------------------------------------------
 function joinHousehold(sheetId) {
   sheetId = String(sheetId || '').trim();
   if (!sheetId) throw new Error('Missing invite link.');
@@ -101,17 +78,17 @@ function joinHousehold(sheetId) {
   if (!hh) throw new Error('That link is not a valid PorterPilot household.');
 
   var me = getMe_();
-  PropertiesService.getUserProperties().setProperty(PROP_KEY, sheetId);
+  PropertiesService.getUserProperties().setProperty(HOUSEHOLD_PROP_KEY, sheetId);
   return { me: me, household: hh };
 }
 
 function leaveHousehold() {
-  PropertiesService.getUserProperties().deleteProperty(PROP_KEY);
+  PropertiesService.getUserProperties().deleteProperty(HOUSEHOLD_PROP_KEY);
   return { me: getMe_(), household: null };
 }
 
 function getInviteLink() {
-  var sheetId = PropertiesService.getUserProperties().getProperty(PROP_KEY);
+  var sheetId = PropertiesService.getUserProperties().getProperty(HOUSEHOLD_PROP_KEY);
   if (!sheetId) throw new Error('No household yet.');
   return getWebAppUrl() + '?hh=' + encodeURIComponent(sheetId);
 }
@@ -127,7 +104,7 @@ function readHousehold_(sheetId) {
     return null; // doesn't exist, or we don't have access
   }
   var meta = ss.getSheetByName('Meta');
-  if (!meta || meta.getRange('A1').getValue() !== MARKER) return null;
+  if (!meta || meta.getRange('A1').getValue() !== HOUSEHOLD_MARKER) return null;
 
   var name = meta.getRange('B1').getValue();
   var adminEmail = meta.getRange('B2').getValue();
@@ -144,15 +121,18 @@ function readHousehold_(sheetId) {
   return { id: sheetId, name: name, adminEmail: adminEmail, people: people };
 }
 
+// Creates every tab the rest of the app expects. Matches the original
+// single-household Setup.gs layout, which Backend.gs (and Bar/Pets/Money/
+// Contacts/Documents/Packing) already assume — those self-create their own
+// extra tabs (BarStock, Pets, Expenses, ...) the first time they're used.
 function buildHouseholdSpreadsheet_(ss, name, peopleNames, me) {
   var today = new Date();
   var day = 24 * 60 * 60 * 1000;
 
-  // Meta — identifies this Sheet as a PorterPilot household and who admins it
   var meta = ss.getSheets()[0];
   meta.setName('Meta');
   meta.getRange('A1:B3').setValues([
-    [MARKER, name],
+    [HOUSEHOLD_MARKER, name],
     ['AdminEmail', me.email],
     ['CreatedAt', today]
   ]);
