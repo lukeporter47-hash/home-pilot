@@ -136,7 +136,8 @@ function buildHouseholdSpreadsheet_(ss, name, peopleNames, me) {
     ['AdminEmail', me.email],
     ['CreatedAt', today]
   ]);
-  meta.hideSheet();
+  // Hidden only after the other tabs exist below — a Sheet can't have
+  // every one of its sheets hidden, and right now Meta is the only one.
 
   var tabs = [
     {
@@ -197,4 +198,6 @@ function buildHouseholdSpreadsheet_(ss, name, peopleNames, me) {
     if (t.name === 'StockLog' || t.name === 'BabyLog') sh.getRange('A2:A5000').setNumberFormat('yyyy-mm-dd hh:mm');
     sh.autoResizeColumns(1, t.headers.length);
   });
+
+  meta.hideSheet();
 }
