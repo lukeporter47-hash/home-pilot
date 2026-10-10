@@ -69,14 +69,22 @@ function joinHousehold(sheetId) {
   sheetId = String(sheetId || '').trim();
   if (!sheetId) throw new Error('Missing invite link.');
 
-  var hh;
+  var ss;
   try {
-    hh = readHousehold_(sheetId);
+    ss = SpreadsheetApp.openById(sheetId);
   } catch (err) {
-    throw new Error("That invite link didn't work. Ask the admin to check it's been shared with you.");
+    // Most common cause: the admin hasn't shared the Sheet with this
+    // Google account yet (or shared it with a different one than the
+    // person is currently signed in as).
+    throw new Error("You don't have access to that household's Sheet yet. Ask the admin to share it with you (the Sheet's own File ▸ Share), then try the link again.");
   }
-  if (!hh) throw new Error('That link is not a valid PorterPilot household.');
 
+  var meta = ss.getSheetByName('Meta');
+  if (!meta || meta.getRange('A1').getValue() !== HOUSEHOLD_MARKER) {
+    throw new Error("That link doesn't point to a valid PorterPilot household.");
+  }
+
+  var hh = readHousehold_(sheetId);
   var me = getMe_();
   PropertiesService.getUserProperties().setProperty(HOUSEHOLD_PROP_KEY, sheetId);
   return { me: me, household: hh };
