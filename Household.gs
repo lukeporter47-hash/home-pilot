@@ -101,6 +101,26 @@ function getInviteLink() {
   return getWebAppUrl() + '?hh=' + encodeURIComponent(sheetId);
 }
 
+// Called from the app's "More" screen — shares the household Sheet with
+// someone's email (Drive "can edit") AND hands back the invite link in one
+// step, so the admin doesn't have to go find the Sheet in Drive themselves.
+function shareHouseholdWithEmail(email) {
+  email = String(email || '').trim();
+  if (!email) throw new Error('Please enter an email address.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('That doesn\'t look like a valid email address.');
+
+  var sheetId = PropertiesService.getUserProperties().getProperty(HOUSEHOLD_PROP_KEY);
+  if (!sheetId) throw new Error('No household yet.');
+
+  try {
+    DriveApp.getFileById(sheetId).addEditor(email);
+  } catch (err) {
+    throw new Error('Could not share the Sheet with ' + email + '. Double check the address and try again.');
+  }
+
+  return { link: getInviteLink(), email: email };
+}
+
 // ---------------------------------------------------------------------
 // Internal
 // ---------------------------------------------------------------------

@@ -192,6 +192,9 @@
   .savebtn { border: 0; border-radius: 14px; padding: 14px; background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 17px; }
   .savebtn[disabled] { opacity: .6; }
   .delbtn { border: 1px solid var(--warn); background: transparent; color: var(--warn); border-radius: 14px; padding: 12px; font-weight: 600; }
+  .sharebox { display: flex; gap: 8px; }
+  .sharebox input { flex: 1; width: auto; }
+  .sharebox button { flex: none; }
 
   .field select { width: 100%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 12px; padding: 12px; font: inherit; font-size: 16px; }
   .sechead { font-family: var(--font-display); font-weight: 700; font-size: 15px; color: var(--muted); margin: 8px 2px 0; }
@@ -1072,6 +1075,8 @@
       buildPackMore(body);
     } else if (mode === 'trip-options') {
       buildTripOptions(body);
+    } else if (mode === 'more') {
+      buildMoreScreen(body);
     } else if (mode === 'contact-form') {
       buildContactForm(body);
     } else if (mode === 'expense-form') {
@@ -2860,6 +2865,49 @@
     });
   }
 
+  // ---------- More / invite screen ----------
+  function buildMoreScreen(body) {
+    $('sheet-title').textContent = 'More';
+    $('sheet-sub').textContent = 'Invite the rest of your household, or share the Sheet directly.';
+
+    var linkWrap = el('div', 'field');
+    linkWrap.appendChild(el('label', null, 'Invite link'));
+    var row = el('div', 'sharebox');
+    var linkInput = el('input'); linkInput.id = 'more-invite-link'; linkInput.readOnly = true; linkInput.value = 'Loading…';
+    var copyBtn = el('button', 'pbtn', 'Copy'); copyBtn.type = 'button';
+    copyBtn.addEventListener('click', function () {
+      linkInput.select(); linkInput.setSelectionRange(0, 99999);
+      try { document.execCommand('copy'); } catch (e) {}
+      copyBtn.textContent = 'Copied'; setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1500);
+    });
+    row.appendChild(linkInput); row.appendChild(copyBtn);
+    linkWrap.appendChild(row);
+    linkWrap.appendChild(el('div', 'hint', 'Anyone with this link still needs the Sheet shared with them first — sharing by email below does both at once.'));
+    body.appendChild(linkWrap);
+    google.script.run.withSuccessHandler(function (link) { linkInput.value = link; }).withFailureHandler(function () { linkInput.value = ''; }).getInviteLink();
+
+    body.appendChild(fieldEl('Share with an email address', 'more-share-email', 'email', '', 'Gives them edit access to the household Sheet and hands you the invite link to send.', { placeholder: 'e.g. partner@gmail.com', autocomplete: 'off' }));
+
+    var btns = el('div', 'formbtns');
+    var share = el('button', 'savebtn', 'Share & invite');
+    share.addEventListener('click', function () {
+      var email = $('more-share-email').value.trim();
+      if (!email) { toast('Please enter an email address'); return; }
+      share.disabled = true; share.textContent = 'Sharing…';
+      google.script.run
+        .withSuccessHandler(function (res) {
+          share.disabled = false; share.textContent = 'Share & invite';
+          linkInput.value = res.link;
+          toast('Shared with ' + res.email);
+          $('more-share-email').value = '';
+        })
+        .withFailureHandler(function (err) { errToast(err); share.disabled = false; share.textContent = 'Share & invite'; })
+        .shareHouseholdWithEmail(email);
+    });
+    btns.appendChild(share);
+    body.appendChild(btns);
+  }
+
   // ---------- Contacts page ----------
   var contactsOpen = false, K = null, contactsError = false, lastFocusContacts = null, contactDraft = null, contactFilter = 'all', contactSearch = '';
   var CONTACT_CATS = ['Home services', 'Medical', 'School', 'Family', 'Emergency', 'Other'];
@@ -3826,6 +3874,7 @@
     if (t === 'bar') { showBarPage(); return; }
     if (t === 'suggest') { showSuggestPage(); return; }
     if (t === 'bar-shop') { showBarPage(); setTimeout(function () { openSheet('bar-shop'); }, 0); return; }
+    if (t === 'more') { openSheet('more'); return; }
     toast((labels[t] || 'This screen') + ' is built next');
   }
   document.querySelectorAll('[data-nav]').forEach(function (b) { b.addEventListener('click', function () { go(b.getAttribute('data-nav')); }); });
