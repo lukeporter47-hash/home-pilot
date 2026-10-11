@@ -3057,6 +3057,36 @@
     actBtn.addEventListener('click', function () { openSheet('activity'); });
     actRow.appendChild(actBtn);
     body.appendChild(actRow);
+
+    var exportRow = el('div', 'field');
+    var exportBtn = el('button', 'pbtn', 'Download my household data'); exportBtn.type = 'button'; exportBtn.style.width = '100%';
+    exportBtn.addEventListener('click', function () {
+      exportBtn.disabled = true; exportBtn.textContent = 'Preparing…';
+      google.script.run
+        .withSuccessHandler(function (r) {
+          exportBtn.disabled = false; exportBtn.textContent = 'Download my household data';
+          if (!downloadBase64File_(r.base64, r.mimeType, r.filename)) { toast('Could not start the download'); return; }
+          toast('Download started');
+        })
+        .withFailureHandler(function (err) { errToast(err); exportBtn.disabled = false; exportBtn.textContent = 'Download my household data'; })
+        .exportHouseholdData();
+    });
+    exportRow.appendChild(exportBtn);
+    exportRow.appendChild(el('div', 'hint', 'A full Excel copy of your household Sheet (every tab) — a safety net in case anything ever happens to the original.'));
+    body.appendChild(exportRow);
+  }
+
+  function downloadBase64File_(base64, mime, filename) {
+    try {
+      var bin = atob(base64), bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      var blob = new Blob([bytes], { type: mime });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a'); a.href = url; a.download = filename; a.style.display = 'none';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+      return true;
+    } catch (e) { return false; }
   }
 
   function buildActivityScreen(body) {

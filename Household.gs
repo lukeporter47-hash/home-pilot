@@ -121,6 +121,23 @@ function shareHouseholdWithEmail(email) {
   return { link: getInviteLink(), email: email };
 }
 
+// Called from the "More" screen's "Download my household data" button.
+// Hands back a full Excel copy of the household Sheet (every tab) as base64,
+// so the browser can save it as a file — a safety net in case anything ever
+// goes wrong with the original Sheet or this Google account.
+function exportHouseholdData() {
+  var sheetId = PropertiesService.getUserProperties().getProperty(HOUSEHOLD_PROP_KEY);
+  if (!sheetId) throw new Error('No household yet.');
+  var file = DriveApp.getFileById(sheetId);
+  var blob = file.getAs(MimeType.MICROSOFT_EXCEL);
+  var safeName = file.getName().replace(/[^\w \-]/g, '').trim() || 'PorterPilot household';
+  return {
+    filename: safeName + ' backup ' + dayStr_(new Date()) + '.xlsx',
+    mimeType: blob.getContentType(),
+    base64: Utilities.base64Encode(blob.getBytes())
+  };
+}
+
 // ---------------------------------------------------------------------
 // Internal
 // ---------------------------------------------------------------------
