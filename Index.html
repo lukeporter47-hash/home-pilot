@@ -1123,6 +1123,7 @@
   // ---------- Sheet (use stock / shopping list / bills) ----------
   function openSheet(m) {
     if (!S) return;
+    pushNavState();
     mode = m; lastFocus = document.activeElement;
     renderSheet();
     $('scrim').classList.add('open'); $('sheet').classList.add('open');
@@ -1275,9 +1276,31 @@
   $('use-btn').addEventListener('click', function () { openSheet('use'); });
   $('close').addEventListener('click', closeSheet);
   $('scrim').addEventListener('click', function () { if (mode !== 'feed-form') closeSheet(); });
+  function closeTopmost() {
+    if (mode) { if (mode !== 'feed-form') closeSheet(); } else if (stockOpen) closeStock(); else if (choresOpen) hideChoresPage(); else if (billsOpen) hideBillsPage(); else if (babyOpen) hideBabyPage(); else if (remindersOpen) hideRemindersPage(); else if (calendarOpen) hideCalendarPage(); else if (mealsOpen) hideMealsPage(); else if (docsOpen) hideDocsPage(); else if (moneyOpen) hideMoneyPage(); else if (contactsOpen) hideContactsPage(); else if (tripsOpen) hideTripsPage(); else if (petsOpen) hidePetsPage(); else if (barOpen) hideBarPage(); else if (suggestOpen) hideSuggestPage();
+  }
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
-    if (mode) { if (mode !== 'feed-form') closeSheet(); } else if (stockOpen) closeStock(); else if (choresOpen) hideChoresPage(); else if (billsOpen) hideBillsPage(); else if (babyOpen) hideBabyPage(); else if (remindersOpen) hideRemindersPage(); else if (calendarOpen) hideCalendarPage(); else if (mealsOpen) hideMealsPage(); else if (docsOpen) hideDocsPage(); else if (moneyOpen) hideMoneyPage(); else if (contactsOpen) hideContactsPage(); else if (tripsOpen) hideTripsPage(); else if (petsOpen) hidePetsPage(); else if (barOpen) hideBarPage(); else if (suggestOpen) hideSuggestPage();
+    closeTopmost();
+  });
+
+  // ---------- Hardware/phone back-button support ----------
+  // PorterPilot is a single-page app: opening a screen or form never changes
+  // the URL, so a WebView wrapper (e.g. when installed as a native app via a
+  // tool like Median) has no browser history to step back through, and its
+  // back button falls straight through to exiting the app. To fix that, every
+  // screen/form open below pushes a throwaway history entry; the phone's back
+  // button then fires a normal 'popstate' event here, which we use to close
+  // whatever is currently on top instead of leaving the app.
+  var inPopNav = false;
+  function pushNavState() {
+    if (inPopNav) return; // don't push again while we're reacting to a back press
+    history.pushState({ ppNav: true }, '');
+  }
+  window.addEventListener('popstate', function () {
+    inPopNav = true;
+    closeTopmost();
+    inPopNav = false;
   });
 
   // ---------- Stock page ----------
@@ -1292,6 +1315,7 @@
 
   function openStock() {
     if (!S) return;
+    pushNavState();
     stockOpen = true; stockFilter = 'all'; stockSearch = ''; $('stock-search').value = '';
     lastFocusPage = document.activeElement;
     $('stock-page').classList.add('open'); document.body.style.overflow = 'hidden';
@@ -1550,6 +1574,7 @@
 
   function showChoresPage() {
     if (!S) return;
+    pushNavState();
     choresOpen = true; choreFilter = 'all'; lastFocusChores = document.activeElement;
     $('chores-page').classList.add('open'); document.body.style.overflow = 'hidden';
     renderChoresPage(); $('chores-back').focus();
@@ -1637,6 +1662,7 @@
 
   function showBillsPage() {
     if (!S) return;
+    pushNavState();
     billsOpen = true; billsSearch = ''; $('bills-search').value = ''; lastFocusBills = document.activeElement;
     $('bills-page').classList.add('open'); document.body.style.overflow = 'hidden';
     renderBillsPage(); $('bills-back').focus();
@@ -1732,6 +1758,7 @@
 
   function showBabyPage() {
     if (!S) return;
+    pushNavState();
     babyOpen = true; babyTab = 'today'; lastFocusBaby = document.activeElement;
     $('baby-page').classList.add('open'); document.body.style.overflow = 'hidden';
     renderBabyPage(); loadBaby(); $('baby-back').focus();
@@ -2205,6 +2232,7 @@
 
   function showRemindersPage() {
     if (!S) return;
+    pushNavState();
     remindersOpen = true; lastFocusRem = document.activeElement;
     $('reminders-page').classList.add('open'); document.body.style.overflow = 'hidden';
     renderRemindersPage(); loadReminders(); $('reminders-back').focus();
@@ -2322,6 +2350,7 @@
 
   function showCalendarPage() {
     if (!S) return;
+    pushNavState();
     calendarOpen = true; calView = 'list'; lastFocusCal = document.activeElement;
     $('calendar-page').classList.add('open'); document.body.style.overflow = 'hidden';
     renderCalendarPage(); loadCalendar(); $('calendar-back').focus();
@@ -2577,6 +2606,7 @@
 
   function showMealsPage() {
     if (!S) return;
+    pushNavState();
     mealsOpen = true; lastFocusMeals = document.activeElement;
     $('meals-page').classList.add('open'); document.body.style.overflow = 'hidden';
     renderMealsPage(); loadMeals(); $('meals-back').focus();
@@ -2714,6 +2744,7 @@
 
   function showDocsPage() {
     if (!S) return;
+    pushNavState();
     docsOpen = true; docFilter = 'all'; docSearch = ''; $('docs-search').value = ''; lastFocusDocs = document.activeElement;
     $('docs-page').classList.add('open'); document.body.style.overflow = 'hidden';
     renderDocsPage(); loadDocs(); $('docs-back').focus();
@@ -2874,6 +2905,7 @@
 
   function showMoneyPage() {
     if (!S) return;
+    pushNavState();
     moneyOpen = true; moneyCat = 'all'; moneyMonth = thisMonth(); lastFocusMoney = document.activeElement;
     $('money-page').classList.add('open'); document.body.style.overflow = 'hidden';
     renderMoneyPage(); loadMoney(); $('money-back').focus();
@@ -3132,6 +3164,7 @@
 
   function showContactsPage() {
     if (!S) return;
+    pushNavState();
     contactsOpen = true; contactFilter = 'all'; contactSearch = ''; $('contacts-search').value = ''; lastFocusContacts = document.activeElement;
     $('contacts-page').classList.add('open'); document.body.style.overflow = 'hidden';
     renderContactsPage(); loadContacts(); $('contacts-back').focus();
@@ -3232,6 +3265,7 @@
 
   function showTripsPage() {
     if (!S) return;
+    pushNavState();
     tripsOpen = true; tripView = 'list'; TI = null; lastFocusTrips = document.activeElement;
     $('trips-page').classList.add('open'); document.body.style.overflow = 'hidden';
     renderTripsPage(); loadTrips(); $('trips-back').focus();
@@ -3551,6 +3585,7 @@
 
   function showPetsPage() {
     if (!S) return;
+    pushNavState();
     petsOpen = true; petAuto = true; petView = 'list'; lastFocusPets = document.activeElement;
     $('pets-page').classList.add('open'); document.body.style.overflow = 'hidden';
     renderPetsPage(); loadPets(); $('pets-back').focus();
@@ -3770,6 +3805,7 @@
 
   function showBarPage() {
     if (!S) return;
+    pushNavState();
     barOpen = true; barFilter = 'all'; lastFocusBar = document.activeElement;
     $('bar-page').classList.add('open'); document.body.style.overflow = 'hidden';
     renderBarPage(); loadBar(); $('bar-back').focus();
@@ -3934,6 +3970,7 @@
 
   function showSuggestPage() {
     if (!S) return;
+    pushNavState();
     suggestOpen = true; lastFocusSuggest = document.activeElement;
     $('suggest-page').classList.add('open'); document.body.style.overflow = 'hidden';
     renderSuggestPage(); loadSuggest(); $('suggest-back').focus();
