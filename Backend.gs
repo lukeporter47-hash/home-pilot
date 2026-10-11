@@ -3,6 +3,12 @@
  * Serves the home screen and reads/writes the Google Sheet.
  */
 
+// Served from GitHub (not from this Apps Script project, which can't host a
+// standalone static file at its own URL) so setFaviconUrl() below has a
+// stable, public HTTPS address to point to. This is also what shows up as
+// the icon when someone adds the app to their phone's home screen.
+var APP_ICON_URL = 'https://raw.githubusercontent.com/lukeporter47-hash/home-pilot/main/assets/icon-192.png';
+
 function doGet(e) {
   // Multi-household router: no household yet (or an invite link) -> the
   // sign-in-free create/join gate. Already set up -> straight into the app.
@@ -15,12 +21,14 @@ function doGet(e) {
     tmpl.webAppUrl = getWebAppUrl();
     return tmpl.evaluate()
       .setTitle('PorterPilot')
+      .setFaviconUrl(APP_ICON_URL)
       .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 
   return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('PorterPilot')
+    .setFaviconUrl(APP_ICON_URL)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
