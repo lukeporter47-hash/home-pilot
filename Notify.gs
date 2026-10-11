@@ -125,3 +125,112 @@ function removeNotificationTriggers() {
     if (fn === 'sendMorningDigest' || fn === 'sendEveningPreview') ScriptApp.deleteTrigger(t);
   });
 }
+
+/* ---------- Weekly digest email ---------- */
+// A Sunday-morning email (not a push notification, so it works even if
+// nobody has turned push notifications on) summarising the week ahead:
+// bills due, meals planned, chores waiting, reminders coming up, documents
+// expiring, and calendar events. Sent to every email on the People tab.
+
+function weekRangeLabel_() {
+  var start = new Date(), end = new Date(start.getTime() + 6 * 86400000);
+  return Utilities.formatDate(start, tz_(), 'd MMM') + '–' + Utilities.formatDate(end, tz_(), 'd MMM');
+}
+
+function buildWeeklyDigest_() {
+  var home = getHomeData();
+  var docs = {}; try { docs = getDocsSummary(); } catch (err) { /* Documents tab not set up */ }
+  var meals = getMealsData();
+  var cal = { events: [] }; try { cal = getCalendarData(); } catch (err) { /* calendar not found */ }
+  var weekEnd = dayStr_(new Date(Date.now() + 7 * 86400000));
+  var sections = [];
+
+  var billLines = (home.bills || []).filter(function (b) { return !b.paid && b.daysLeft >= 0 && b.daysLeft <= 7; })
+    .sort(function (a, b) { return a.daysLeft - b.daysLeft; })
+    .map(function (b) { return b.name + ' — ' + dueWords_(b.daysLeft); });
+  if (billLines.length) sections.push({ title: 'Bills due this week', lines: billLines });
+
+  var mealLines = (meals.items || []).filter(function (m) { return m.date <= weekEnd; })
+    .map(function (m) { return Utilities.formatDate(Utilities.parseDate(m.date, tz_(), 'yyyy-MM-dd'), tz_(), 'EEE') + ': ' + m.meal; });
+  if (mealLines.length) sections.push({ title: 'Meals planned', lines: mealLines });
+
+  var choreLines = (home.chores || []).filter(function (c) { return c.status === 'due'; })
+    .map(function (c) { return c.name + (c.who ? ' (' + c.who + ')' : ''); });
+  if (choreLines.length) sections.push({ title: 'Chores waiting', lines: choreLines });
+
+  var reminderLines = (home.reminders || []).filter(function (r) { return r.daysLeft >= 0 && r.daysLeft <= 7; })
+    .sort(function (a, b) { return a.daysLeft - b.daysLeft; })
+    .map(function (r) { return r.name + ' — ' + dueWords_(r.daysLeft); });
+  if (reminderLines.length) sections.push({ title: 'Reminders coming up', lines: reminderLines });
+
+  var docLines = ((docs && docs.soon) || []).filter(function (d) { return d.daysLeft >= 0 && d.daysLeft <= 7; })
+    .map(function (d) { return d.title + (d.daysLeft === 0 ? ' expires today' : ' expires in ' + d.daysLeft + ' days'); });
+  if (docLines.length) sections.push({ title: 'Documents expiring', lines: docLines });
+
+  var eventLines = (cal.events || []).filter(function (e) { return dayStr_(new Date(e.start)) <= weekEnd; })
+    .map(function (e) {
+      return Utilities.formatDate(new Date(e.start), tz_(), 'EEE d MMM') +
+        (e.allDay ? ' (all day)' : ' ' + Utilities.formatDate(new Date(e.start), tz_(), 'HH:mm')) + ': ' + e.title;
+    });
+  if (eventLines.length) sections.push({ title: 'On the calendar', lines: eventLines });
+
+  return sections;
+}
+
+function weeklyDigestHtml_(sections) {
+  var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
+  var body = sections.map(function (s) {
+    var items = s.lines.map(function (l) { return '<li style="margin:0 0 6px;">' + esc(l) + '</li>'; }).join('');
+    return '<h2 style="font-family:Georgia,serif;font-size:17px;color:#2B3528;margin:22px 0 8px;">' + esc(s.title) + '</h2>' +
+      '<ul style="margin:0;padding-left:20px;color:#2B3528;font-size:14px;line-height:1.5;">' + items + '</ul>';
+  }).join('');
+  return '<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;background:#FFFDF8;padding:24px;border-radius:12px;border:1px solid #E1DAC7;">' +
+    '<p style="font-family:Georgia,serif;font-weight:bold;font-size:20px;color:#2B3528;margin:0 0 4px;">PorterPilot</p>' +
+    '<p style="color:#74806E;font-size:13px;margin:0 0 4px;">Your week ahead, ' + weekRangeLabel_() + '</p>' +
+    body +
+    '<p style="margin-top:24px;"><a href="' + notifyAppUrl_() + '" style="background:#55684B;color:#fff;padding:10px 18px;border-radius:10px;text-decoration:none;font-size:14px;">Open PorterPilot</a></p>' +
+    '</div>';
+}
+
+function weeklyDigestText_(sections) {
+  return sections.map(function (s) { return s.title + ':\n' + s.lines.map(function (l) { return '- ' + l; }).join('\n'); }).join('\n\n');
+}
+
+// Runs once a week. Sends nothing when there is nothing due, and nothing to
+// a member with no email on the People tab.
+function sendWeeklyDigestEmail() {
+  var sections = buildWeeklyDigest_();
+  if (!sections.length) return;
+  var subject = 'PorterPilot: your week ahead (' + weekRangeLabel_() + ')';
+  var html = weeklyDigestHtml_(sections);
+  var text = weeklyDigestText_(sections);
+  var emails = rows_('People').map(function (r) { return String(r[1] || '').trim(); }).filter(function (e) { return /@/.test(e); });
+  var uniq = emails.filter(function (e, i) { return emails.indexOf(e) === i; });
+  uniq.forEach(function (email) {
+    try { MailApp.sendEmail({ to: email, subject: subject, body: text, htmlBody: html }); } catch (err) { /* keep going for the rest */ }
+  });
+}
+
+// Run this by hand once (e.g. from the Apps Script editor). Add a
+// NotifyWeeklyHour row (0-23) in the Settings tab to change the send time.
+function installWeeklyDigestTrigger() {
+  removeWeeklyDigestTrigger();
+  var hour = Math.min(23, Math.max(0, parseInt(getSetting_('NotifyWeeklyHour'), 10) || 8));
+  ScriptApp.newTrigger('sendWeeklyDigestEmail').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(hour).inTimezone(tz_()).create();
+  Logger.log('Weekly digest email at ' + hour + ':00 on Sundays (' + tz_() + ').');
+}
+
+function removeWeeklyDigestTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'sendWeeklyDigestEmail') ScriptApp.deleteTrigger(t);
+  });
+}
+
+// Run this by hand to check the email looks right, without waiting for Sunday.
+function sendTestWeeklyDigest() {
+  var sections = buildWeeklyDigest_();
+  if (!sections.length) { Logger.log('Nothing due in the next 7 days, so no email would be sent.'); return; }
+  var me = Session.getActiveUser().getEmail();
+  MailApp.sendEmail({ to: me, subject: 'PorterPilot: your week ahead (' + weekRangeLabel_() + ') [TEST]', body: weeklyDigestText_(sections), htmlBody: weeklyDigestHtml_(sections) });
+  Logger.log('Test email sent to ' + me);
+}
