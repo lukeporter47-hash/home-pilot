@@ -3091,6 +3091,42 @@
     if (tripView === 'list') { if (T) openSheet('trip-form'); } else if (TI) { packDraft = null; openSheet('pack-form'); }
   });
 
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(function () { fallbackCopy(text); });
+    } else { fallbackCopy(text); }
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+  function shareTripList() {
+    if (!TI) return;
+    var tr = TI.trip, items = TI.items;
+    var packed = items.filter(function (x) { return x.packed; }).length;
+    var lines = [tr.name + ' — packing list', plural(tr.days, 'day', 'days') + ', ' + packed + ' of ' + items.length + ' packed', ''];
+    var order = ['Everyone'].concat(tr.people.map(function (p) { return p.n; }));
+    items.forEach(function (x) { if (order.indexOf(x.person) < 0) order.push(x.person); });
+    order.forEach(function (who) {
+      var mine = items.filter(function (x) { return x.person === who; });
+      if (!mine.length) return;
+      lines.push((who === 'Everyone' ? 'Everyone (shared)' : who) + ':');
+      mine.slice().sort(function (a, b) { return a.category.localeCompare(b.category) || a.item.localeCompare(b.item); })
+        .forEach(function (x) { lines.push('  ' + (x.packed ? '[x] ' : '[ ] ') + x.item + (x.qty > 1 ? ' x' + x.qty : '')); });
+      lines.push('');
+    });
+    var text = lines.join('\n').trim();
+    if (navigator.share) {
+      navigator.share({ title: tr.name + ' packing list', text: text }).catch(function () {});
+    } else {
+      copyText(text);
+      toast('Packing list copied — paste it to share');
+    }
+  }
+
   function progressBar(packed, total) {
     var bar = el('div', 'bar'), fill = el('div', 'fill');
     fill.style.width = total ? Math.round(packed / total * 100) + '%' : '0%'; bar.appendChild(fill); return bar;
@@ -3140,6 +3176,7 @@
     var tb = el('div', 'toolbar');
     var hp = el('button', 'chip' + (hidePacked ? ' on' : ''), 'Hide packed items'); hp.setAttribute('aria-pressed', hidePacked ? 'true' : 'false');
     hp.addEventListener('click', function () { hidePacked = !hidePacked; renderTripsPage(); }); tb.appendChild(hp);
+    var share = el('button', 'pbtn', 'Share list'); share.addEventListener('click', shareTripList); tb.appendChild(share);
     var more = el('button', 'pbtn', 'Suggest more with AI'); more.addEventListener('click', function () { openSheet('pack-more'); }); tb.appendChild(more);
     var opt = el('button', 'pbtn', 'Trip options'); opt.addEventListener('click', function () { openSheet('trip-options'); }); tb.appendChild(opt);
     box.appendChild(tb);
