@@ -559,6 +559,7 @@
       <button class="pbtn strong" id="trips-add">New trip</button>
     </div>
     <p class="psum" id="trips-summary"></p>
+    <div class="ptools" id="trips-tools"><button class="pbtn" id="trips-import" style="flex:1">Import from another Sheet</button></div>
     <div id="trips-body"></div>
   </div>
 </div>
@@ -1204,6 +1205,8 @@
       buildPetWeightForm(body);
     } else if (mode === 'trip-form') {
       buildTripForm(body);
+    } else if (mode === 'trip-import') {
+      buildTripImportForm(body);
     } else if (mode === 'pack-form') {
       buildPackForm(body);
     } else if (mode === 'pack-more') {
@@ -3185,6 +3188,7 @@
   $('trips-add').addEventListener('click', function () {
     if (tripView === 'list') { if (T) openSheet('trip-form'); } else if (TI) { packDraft = null; openSheet('pack-form'); }
   });
+  $('trips-import').addEventListener('click', function () { openSheet('trip-import'); });
 
   function copyText(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -3238,6 +3242,7 @@
     var sum = $('trips-summary');
     $('trips-title').textContent = tripView === 'trip' ? (TI ? TI.trip.name : 'Trip') : 'Packing lists';
     $('trips-add').textContent = tripView === 'trip' ? 'Add item' : 'New trip';
+    $('trips-tools').style.display = tripView === 'trip' ? 'none' : '';
     if (tripView === 'trip') { renderTripView(box, sum); return; }
     if (!T) { sum.textContent = ''; loadingBox(box, tripsError, function () { tripsError = false; renderTripsPage(); loadTrips(); }); return; }
     var active = T.trips.filter(function (t) { return !t.archived; }), archived = T.trips.filter(function (t) { return t.archived; });
@@ -3354,6 +3359,29 @@
       addedText: function (d) { return d.name.trim() + ' created'; },
       after: function () { loadTrips(function () { var first = T && T.trips.filter(function (t) { return !t.archived; })[0]; if (first) openTrip(first.id); }); }
     });
+  }
+
+  function buildTripImportForm(body) {
+    $('sheet-title').textContent = 'Import packing lists';
+    $('sheet-sub').textContent = 'Pulls trips and their items across from another Google Sheet that uses the same layout (e.g. an older version of this app). Trips you already have are skipped.';
+    body.appendChild(fieldEl('Google Sheet link or ID', 'ti-url', 'text', '', '', { placeholder: 'Paste the Sheet’s URL', autocomplete: 'off' }));
+    var btns = el('div', 'formbtns');
+    var save = el('button', 'savebtn', 'Import');
+    save.addEventListener('click', function () {
+      var url = $('ti-url').value.trim();
+      if (!url) { toast('Please paste the Sheet’s link'); return; }
+      save.disabled = true; save.textContent = 'Importing…';
+      google.script.run
+        .withSuccessHandler(function (r) {
+          var msg = r.imported ? plural(r.imported, 'trip', 'trips') + ' imported' + (r.items ? ' (' + plural(r.items, 'item', 'items') + ')' : '') : 'Nothing new to import';
+          if (r.skipped) msg += ', ' + plural(r.skipped, 'duplicate', 'duplicates') + ' skipped';
+          toast(msg); closeSheet(); loadTrips();
+        })
+        .withFailureHandler(function (err) { errToast(err); save.disabled = false; save.textContent = 'Import'; })
+        .importPackingSheet(url);
+    });
+    btns.appendChild(save);
+    body.appendChild(btns);
   }
 
   // ----- Items -----

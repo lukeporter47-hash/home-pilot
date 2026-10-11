@@ -310,3 +310,71 @@ function deletePackItem(row, tripId, item) {
   var sh = packSheet_();
   return withLock_(function () { checkPackRow_(sh, row, tripId, item); sh.deleteRow(row); return true; });
 }
+
+/* --- Import from another Sheet (e.g. an older, single-household version of the app) --- */
+
+function extractSheetId_(input) {
+  input = String(input || '').trim();
+  var m = input.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  if (m) return m[1];
+  if (/^[a-zA-Z0-9-_]{20,}$/.test(input)) return input;
+  return '';
+}
+
+function packedFlag_(v) {
+  if (v === true) return 'Yes';
+  var s = String(v || '').trim().toLowerCase();
+  return (s === 'yes' || s === 'true') ? 'Yes' : '';
+}
+
+// Pulls trips + their packing-list items across from another Google Sheet that
+// uses the same Trips/PackItems layout (e.g. the original single-household
+// version of this app). Trips already present (same name, kind and length)
+// are skipped so running this twice doesn't duplicate anything.
+function importPackingSheet(url) {
+  var id = extractSheetId_(url);
+  if (!id) throw new Error("That doesn't look like a Google Sheets link or ID.");
+
+  var src;
+  try { src = SpreadsheetApp.openById(id); } catch (err) {
+    throw new Error('Could not open that Sheet. Check the link and make sure it is shared with you.');
+  }
+  var srcTripsSh = src.getSheetByName('Trips');
+  var srcPackSh = src.getSheetByName('PackItems');
+  if (!srcTripsSh || !srcPackSh) throw new Error('That Sheet does not have Trips and PackItems tabs.');
+
+  var srcTrips = srcTripsSh.getLastRow() > 1 ? srcTripsSh.getRange(2, 1, srcTripsSh.getLastRow() - 1, 8).getValues() : [];
+  var srcPack = srcPackSh.getLastRow() > 1 ? srcPackSh.getRange(2, 1, srcPackSh.getLastRow() - 1, 6).getValues() : [];
+
+  return withLock_(function () {
+    var destTripsSh = tripsSheet_(), destPackSh = packSheet_();
+    var existingKey = {};
+    readTrips_().forEach(function (t) { existingKey[t.name + '|' + t.trip + '|' + t.days] = true; });
+
+    var idMap = {}, imported = 0, skipped = 0, itemsImported = 0, i = 0;
+    var newTripRows = [];
+    srcTrips.forEach(function (r) {
+      var oldId = String(r[0] || ''), name = String(r[1] || '').trim();
+      if (!oldId || !name) return;
+      var trip = String(r[2] || ''), days = Number(r[3]) || 1;
+      var key = name + '|' + trip + '|' + days;
+      if (existingKey[key]) { skipped++; return; }
+      var newId = 't' + Date.now().toString(36) + (i++).toString(36);
+      idMap[oldId] = newId;
+      newTripRows.push([newId, name, trip, days, String(r[4] || '[]'), String(r[5] || ''), r[6] instanceof Date ? r[6] : new Date(), String(r[7] || '')]);
+      imported++;
+    });
+    if (newTripRows.length) destTripsSh.getRange(destTripsSh.getLastRow() + 1, 1, newTripRows.length, 8).setValues(newTripRows);
+
+    var newPackRows = [];
+    srcPack.forEach(function (r) {
+      var newId = idMap[String(r[0] || '')];
+      if (!newId) return; // that trip was a duplicate, or had no TripId
+      newPackRows.push([newId, String(r[1] || 'Everyone'), String(r[2] || ''), Number(r[3]) || 1, String(r[4] || 'Other'), packedFlag_(r[5])]);
+      itemsImported++;
+    });
+    if (newPackRows.length) destPackSh.getRange(destPackSh.getLastRow() + 1, 1, newPackRows.length, 6).setValues(newPackRows);
+
+    return { imported: imported, skipped: skipped, items: itemsImported };
+  });
+}
