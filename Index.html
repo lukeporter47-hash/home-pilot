@@ -432,6 +432,7 @@
       <button class="pbtn strong" id="bills-add">Add bill</button>
     </div>
     <p class="psum" id="bills-summary"></p>
+    <div class="ptools"><input class="search" id="bills-search" type="search" placeholder="Search bills" aria-label="Search bills"></div>
     <ul class="rows" id="bills-list"></ul>
   </div>
 </div>
@@ -1148,7 +1149,7 @@
   }
   function renderSheet() {
     var body = $('sheet-body'); body.innerHTML = '';
-    $('close').textContent = (mode !== 'use' && mode !== 'shop' && mode !== 'bills') ? 'Cancel' : 'Done';
+    $('close').textContent = (mode !== 'use' && mode !== 'shop' && mode !== 'bills' && mode !== 'activity') ? 'Cancel' : 'Done';
     $('close').style.display = mode === 'feed-form' ? 'none' : '';
     if (mode === 'use') {
       $('sheet-title').textContent = 'What did you use?';
@@ -1215,6 +1216,8 @@
       buildTripOptions(body);
     } else if (mode === 'more') {
       buildMoreScreen(body);
+    } else if (mode === 'activity') {
+      buildActivityScreen(body);
     } else if (mode === 'contact-form') {
       buildContactForm(body);
     } else if (mode === 'expense-form') {
@@ -1630,11 +1633,11 @@
   $('chores-add').addEventListener('click', function () { openChoreForm(null); });
 
   // ---------- Bills page ----------
-  var billsOpen = false, editingBill = null, billDraft = null, lastFocusBills = null;
+  var billsOpen = false, editingBill = null, billDraft = null, lastFocusBills = null, billsSearch = '';
 
   function showBillsPage() {
     if (!S) return;
-    billsOpen = true; lastFocusBills = document.activeElement;
+    billsOpen = true; billsSearch = ''; $('bills-search').value = ''; lastFocusBills = document.activeElement;
     $('bills-page').classList.add('open'); document.body.style.overflow = 'hidden';
     renderBillsPage(); $('bills-back').focus();
   }
@@ -1643,11 +1646,14 @@
     renderAll(); if (lastFocusBills && lastFocusBills.focus) lastFocusBills.focus();
   }
   function renderBillsPage() {
-    var unpaid = S.bills.filter(function (b) { return !b.paid; }).sort(function (a, b) { return a.daysLeft - b.daysLeft; });
-    var paid = S.bills.filter(function (b) { return b.paid; }).sort(function (a, b) { return a.due - b.due; });
+    var q = billsSearch.trim().toLowerCase();
+    var all = q ? S.bills.filter(function (b) { return b.name.toLowerCase().indexOf(q) >= 0; }) : S.bills;
+    var unpaid = all.filter(function (b) { return !b.paid; }).sort(function (a, b) { return a.daysLeft - b.daysLeft; });
+    var paid = all.filter(function (b) { return b.paid; }).sort(function (a, b) { return a.due - b.due; });
     $('bills-summary').textContent = S.bills.length ? unpaid.length + ' to pay this month, ' + paid.length + ' paid' : 'No bills yet';
     var ul = $('bills-list'); ul.innerHTML = '';
     if (!S.bills.length) { var li0 = el('li'); li0.appendChild(el('div', 'empty', 'No bills yet. Tap Add bill to start.')); ul.appendChild(li0); return; }
+    if (!all.length) { var li1 = el('li'); li1.appendChild(el('div', 'empty', 'No bills match your search.')); ul.appendChild(li1); return; }
     if (unpaid.length) { ul.appendChild(el('li', 'sechead', 'To pay')); unpaid.forEach(function (b) { ul.appendChild(billRow(b)); }); }
     if (paid.length) { ul.appendChild(el('li', 'sechead', 'Paid this month')); paid.forEach(function (b) { ul.appendChild(billRow(b)); }); }
   }
@@ -1700,6 +1706,7 @@
   }
   $('bills-back').addEventListener('click', hideBillsPage);
   $('bills-add').addEventListener('click', function () { openBillForm(null); });
+  $('bills-search').addEventListener('input', function (e) { billsSearch = e.target.value; renderBillsPage(); });
 
   // ---------- Baby page ----------
   var babyOpen = false, babyTab = 'today', B = null, babyError = false, lastFocusBaby = null, entryDraft = null, clinicDraft = null, growthDraft = null;
@@ -3044,6 +3051,36 @@
     });
     btns.appendChild(share);
     body.appendChild(btns);
+
+    var actRow = el('div', 'field');
+    var actBtn = el('button', 'pbtn', 'Recent activity'); actBtn.type = 'button'; actBtn.style.width = '100%';
+    actBtn.addEventListener('click', function () { openSheet('activity'); });
+    actRow.appendChild(actBtn);
+    body.appendChild(actRow);
+  }
+
+  function buildActivityScreen(body) {
+    $('sheet-title').textContent = 'Recent activity';
+    $('sheet-sub').textContent = 'The last things logged across your household, newest first.';
+    var box = el('div'); box.appendChild(el('div', 'empty', 'Loading…'));
+    body.appendChild(box);
+    google.script.run
+      .withSuccessHandler(function (list) {
+        box.innerHTML = '';
+        if (!list || !list.length) { box.appendChild(el('div', 'empty', 'Nothing logged yet.')); return; }
+        var ul = el('ul', 'rows');
+        list.forEach(function (a) {
+          var li = el('li'), row = el('div', 'row');
+          var main = el('div', 'main');
+          main.appendChild(el('div', 'title', a.who + ' ' + a.text));
+          main.appendChild(el('div', 'sub', ago(a.when)));
+          row.appendChild(main);
+          li.appendChild(row); ul.appendChild(li);
+        });
+        box.appendChild(ul);
+      })
+      .withFailureHandler(function () { box.innerHTML = ''; box.appendChild(el('div', 'empty', 'Could not load activity.')); })
+      .getActivity();
   }
 
   // ---------- Contacts page ----------

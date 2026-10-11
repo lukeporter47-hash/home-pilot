@@ -110,7 +110,11 @@ function cleanExpense_(f) {
 function addExpense(f) {
   var c = cleanExpense_(f);
   var sh = expensesSheet_();
-  return withLock_(function () { sh.appendRow([c.date, c.amount, c.category, c.note, who_()]); return true; });
+  return withLock_(function () {
+    sh.appendRow([c.date, c.amount, c.category, c.note, who_()]);
+    logActivity_('logged an expense: ' + c.category + (c.note ? ' (' + c.note + ')' : ''));
+    return true;
+  });
 }
 
 // "old" is what the row looked like when it was loaded, so we never change the wrong row

@@ -293,6 +293,45 @@ function getHouseholdInsight() {
   return message ? { message: message, action: action } : null;
 }
 
+/* ---------- Recent activity feed ---------- */
+
+function activitySheet_() {
+  let sh = ss_().getSheetByName('Activity');
+  if (!sh) {
+    sh = ss_().insertSheet('Activity');
+    sh.getRange(1, 1, 1, 3).setValues([['Timestamp', 'Who', 'What']])
+      .setFontWeight('bold').setBackground('#1B7A6B').setFontColor('#FFFFFF');
+    sh.setFrozenRows(1);
+    sh.getRange('A2:A5000').setNumberFormat('yyyy-mm-dd hh:mm');
+    sh.autoResizeColumns(1, 3);
+  }
+  return sh;
+}
+
+// Called right after another action saves a change, so the household can see
+// "who did what" without digging through the Sheet. Never lets a logging
+// problem break the action it's attached to.
+function logActivity_(text) {
+  try {
+    const sh = activitySheet_();
+    sh.appendRow([new Date(), who_(), String(text).slice(0, 140)]);
+    const n = sh.getLastRow();
+    if (n > 500) sh.deleteRows(2, n - 500); // keep the sheet from growing forever
+  } catch (err) { /* ignore */ }
+}
+
+function getActivity() {
+  const sh = ss_().getSheetByName('Activity');
+  if (!sh) return [];
+  const n = sh.getLastRow();
+  if (n < 2) return [];
+  const start = Math.max(2, n - 29); // most recent 30
+  return sh.getRange(start, 1, n - start + 1, 3).getValues()
+    .map(r => ({ when: r[0] instanceof Date ? r[0].getTime() : 0, who: String(r[1] || ''), text: String(r[2] || '') }))
+    .filter(x => x.when && x.text)
+    .sort((a, b) => b.when - a.when);
+}
+
 /* ---------- Actions the home screen can save ---------- */
 
 function logBaby(type) {
@@ -309,6 +348,7 @@ function useItem(item) {
     if (cur <= 0) return cur;
     sh.getRange(r, 4).setValue(cur - 1);
     ss_().getSheetByName('StockLog').appendRow([new Date(), item, -1, who_()]);
+    logActivity_('used ' + item);
     return cur - 1;
   });
 }
@@ -322,6 +362,7 @@ function restockItem(item) {
     const buy = Number(sh.getRange(r, 6).getValue()) || 0;
     sh.getRange(r, 4).setValue(cur + buy);
     ss_().getSheetByName('StockLog').appendRow([new Date(), item, buy, who_()]);
+    logActivity_('bought ' + item);
     return cur + buy;
   });
 }
@@ -334,8 +375,9 @@ function toggleChore(name) {
     const cell = sh.getRange(r, 4);
     const v = cell.getValue();
     const doneToday = v instanceof Date && dayStr_(v) === dayStr_(new Date());
-    if (doneToday) { cell.clearContent(); return false; }
+    if (doneToday) { cell.clearContent(); logActivity_('marked "' + name + '" not done'); return false; }
     cell.setValue(new Date());
+    logActivity_('did the chore: ' + name);
     return true;
   });
 }
@@ -537,8 +579,9 @@ function toggleBillPaid(name) {
     const cell = sh.getRange(r, 3);
     const v = cell.getValue();
     const cur = v instanceof Date ? Utilities.formatDate(v, tz_(), 'yyyy-MM') : String(v);
-    if (cur === monthStr) { cell.clearContent(); return false; }
+    if (cur === monthStr) { cell.clearContent(); logActivity_('marked "' + name + '" unpaid'); return false; }
     cell.setNumberFormat('@').setValue(monthStr);
+    logActivity_('paid the ' + name + ' bill');
     return true;
   });
 }
@@ -684,6 +727,7 @@ function logBabyAt(type, ts, feedType, amount, food) {
   const sh = babyLogSheet_();
   return withLock_(() => {
     sh.appendRow([new Date(t), type, who_(), note, extra[0], extra[1], extra[2]]);
+    logActivity_('logged a ' + type.toLowerCase() + (note ? ' (' + note + ')' : ''));
     return true;
   });
 }
@@ -1094,6 +1138,7 @@ function addMeal(f) {
   const sh = mealsSheet_();
   return withLock_(() => {
     sh.appendRow([Utilities.parseDate(ds, tz_(), 'yyyy-MM-dd'), meal, String(f.notes || '').trim().slice(0, 200)]);
+    logActivity_('planned ' + meal + ' for ' + ds);
     return true;
   });
 }

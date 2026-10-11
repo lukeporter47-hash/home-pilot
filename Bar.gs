@@ -126,6 +126,7 @@ function pourBarItem(item) {
     var next = Math.max(0, cur - pour);
     sh.getRange(row, 4).setValue(next);
     barLogSheet_().appendRow([new Date(), item, -(cur - next), who_()]);
+    logActivity_('poured ' + item);
     return next;
   });
 }
@@ -143,6 +144,7 @@ function adjustBarItem(item, delta) {
     if (next === cur) return cur;
     sh.getRange(row, 4).setValue(next);
     barLogSheet_().appendRow([new Date(), item, next - cur, who_()]);
+    if (d < 0) logActivity_('had a ' + item);
     return next;
   });
 }
@@ -160,6 +162,7 @@ function restockBarItem(item, cost, category) {
     var nxt = target > 0 ? target : cur + 1;
     sh.getRange(row, 4).setValue(nxt);
     barLogSheet_().appendRow([new Date(), item, nxt - cur, who_()]);
+    logActivity_('restocked ' + item + ' (bar)');
     return nxt;
   });
   var amount = parseFloat(String(cost == null ? '' : cost).replace(',', '.'));
