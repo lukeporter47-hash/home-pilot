@@ -2399,6 +2399,8 @@
     if (e.allDay) {
       var lastDay = new Date(e.end - 86400000);
       if (lastDay.toDateString() !== new Date(e.start).toDateString()) bits.push('until ' + lastDay.toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short' }));
+    } else if (new Date(e.end).toDateString() !== new Date(e.start).toDateString()) {
+      bits.push('until ' + new Date(e.end).toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + fmtTime(e.end));
     } else { bits.push('until ' + fmtTime(e.end)); }
     if (e.location) bits.push(e.location);
     if (e.whoLabel) bits.push(e.whoLabel === 'Everyone' ? 'Everyone' : 'With ' + e.whoLabel);
@@ -2482,19 +2484,22 @@
     times.appendChild(fieldEl('Starts', 'e-start', 'time', e && !e.allDay ? inputTime(e.start) : defStart));
     times.appendChild(fieldEl('Ends', 'e-end', 'time', e && !e.allDay ? inputTime(e.end) : defEnd));
     body.appendChild(times);
-    var spanBox = el('div'); spanBox.style.display = isAll ? '' : 'none';
+    // "This lasts more than one day" applies to a set-time event too (e.g. a camping
+    // trip from Friday afternoon to Sunday morning), not just an all-day one.
+    var spanBox = el('div');
     var multi = el('div', 'field');
     var ms = el('label'); var mc = document.createElement('input'); mc.type = 'checkbox'; mc.id = 'e-multi';
-    var isMulti = !!(e && e.allDay && inputDate(e.end - 86400000) !== inputDate(e.start));
+    var lastRealDayMs = e ? (e.allDay ? e.end - 86400000 : e.end) : 0;
+    var isMulti = !!(e && inputDate(lastRealDayMs) !== inputDate(e.start));
     mc.checked = isMulti;
     ms.appendChild(mc); ms.appendChild(document.createTextNode(' This lasts more than one day'));
     multi.appendChild(ms); spanBox.appendChild(multi);
     var endBox = el('div'); endBox.style.display = isMulti ? '' : 'none';
-    endBox.appendChild(fieldEl('Last day', 'e-enddate', 'date', e && e.allDay ? inputDate(e.end - 86400000) : defDate));
+    endBox.appendChild(fieldEl('Last day', 'e-enddate', 'date', e ? inputDate(lastRealDayMs) : defDate));
     spanBox.appendChild(endBox);
     mc.addEventListener('change', function () { endBox.style.display = mc.checked ? '' : 'none'; });
     body.appendChild(spanBox);
-    $('e-kind').addEventListener('change', function () { var all = this.value === 'allday'; times.style.display = all ? 'none' : ''; spanBox.style.display = all ? '' : 'none'; });
+    $('e-kind').addEventListener('change', function () { times.style.display = this.value === 'allday' ? 'none' : ''; });
 
     var people = C && C.people && C.people.length ? C.people : ['Everyone'];
     var selWho = e && e.who ? e.who.slice() : [];
@@ -2525,11 +2530,11 @@
       read: function () {
         var allDay = $('e-kind').value === 'allday';
         var d = { title: $('e-title').value, category: $('e-cat').value, date: $('e-date').value, allDay: allDay, start: $('e-start').value, end: $('e-end').value, location: $('e-loc').value, notes: $('e-notes').value, who: selWho };
-        if (allDay && mc.checked) d.endDate = $('e-enddate').value;
+        if (mc.checked) d.endDate = $('e-enddate').value;
         if (!d.title.trim()) { toast('Please enter a title'); return null; }
         if (!d.date) { toast('Please pick a date'); return null; }
         if (!d.allDay && !d.start) { toast('Please pick a start time'); return null; }
-        if (allDay && mc.checked && d.endDate && d.endDate < d.date) { toast('The last day must be on or after the start date'); return null; }
+        if (mc.checked && d.endDate && d.endDate < d.date) { toast('The last day must be on or after the start date'); return null; }
         return d;
       },
       updateArgs: function (d) { return [e.calId, e.id, d]; },

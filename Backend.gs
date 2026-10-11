@@ -216,7 +216,7 @@ function getHomeData() {
             title: e.getTitle(),
             time: e.isAllDayEvent() ? 'All day' : Utilities.formatDate(e.getStartTime(), tz_(), 'HH:mm'),
             sub: e.getLocation() || '',
-            who: parseWho_(e.getDescription(), ppl).label,
+            who: parseEventMeta_(e.getDescription(), ppl).label,
             start: e.getStartTime().getTime()
           });
         });
@@ -1011,23 +1011,45 @@ function eventPeople_() {
   return v.split(',').map(x => x.trim()).filter(Boolean);
 }
 
-// The people are stored on the first line of the event description, e.g. "Who: Luke, Marianka"
-function parseWho_(desc, ppl) {
-  const m = /^Who: ([^\n<]*)(?:\n|<br\s*\/?>)?([\s\S]*)$/i.exec(String(desc || ''));
-  const who = m ? m[1].split(',').map(x => x.trim()).filter(Boolean) : [];
-  const notes = m ? m[2] : String(desc || '');
+// Matches the CAL_CATS select in Index.html's event form - keep both lists in sync.
+const CAL_CATS_ = ['Family', 'Baby', 'Medical', 'School', 'Social', 'Holiday', 'Other'];
+// Matches Index.html's CAT_HEX, so the month-view dots and event rows use the same colors.
+const CAL_CAT_HEX_ = { Family: '#2F6FB5', Baby: '#D9A128', Medical: '#B7391F', School: '#1B7A6B', Social: '#7B5CC4', Holiday: '#C4692A', Other: '#6B7A80' };
+// The native Google Calendar color per category, so events look color-coded in Google
+// Calendar itself too, not just inside PorterPilot.
+const CAL_CAT_COLOR_ = {
+  Family: CalendarApp.EventColor.BLUE, Baby: CalendarApp.EventColor.YELLOW, Medical: CalendarApp.EventColor.RED,
+  School: CalendarApp.EventColor.CYAN, Social: CalendarApp.EventColor.MAUVE, Holiday: CalendarApp.EventColor.ORANGE,
+  Other: CalendarApp.EventColor.GRAY
+};
+
+// PorterPilot's own metadata lives on the first lines of the event description,
+// e.g. "Who: Luke, Marianka" then "Cat: Family" - everything after that is the
+// person's own notes. Both lines are optional and order doesn't matter, so this
+// still reads events created before categories existed.
+function parseEventMeta_(desc, ppl) {
+  const lines = String(desc || '').replace(/<br\s*\/?>/gi, '\n').split('\n');
+  let who = [], category = '', i = 0;
+  for (; i < lines.length; i++) {
+    const wm = /^Who:\s*(.*)$/i.exec(lines[i]);
+    const cm = /^Cat:\s*(.*)$/i.exec(lines[i]);
+    if (wm) { who = wm[1].split(',').map(x => x.trim()).filter(Boolean); continue; }
+    if (cm) { category = cm[1].trim(); continue; }
+    break;
+  }
+  const notes = lines.slice(i).join('\n');
   let label = '';
   if (who.length) label = (ppl.length && ppl.every(p => who.indexOf(p) >= 0)) ? 'Everyone' : who.join(', ');
-  return { who: who, notes: notes, label: label };
+  return { who: who, notes: notes, label: label, category: CAL_CATS_.indexOf(category) >= 0 ? category : 'Other' };
 }
 
 function eventInfo_(e, calId, ppl) {
-  const w = parseWho_(e.getDescription(), ppl);
+  const w = parseEventMeta_(e.getDescription(), ppl);
   return {
     calId: calId, id: e.getId(), title: e.getTitle(),
     start: e.getStartTime().getTime(), end: e.getEndTime().getTime(),
     allDay: e.isAllDayEvent(), location: e.getLocation() || '', notes: w.notes,
-    who: w.who, whoLabel: w.label,
+    who: w.who, whoLabel: w.label, category: w.category,
     recurring: e.isRecurringEvent()
   };
 }
@@ -1053,20 +1075,74 @@ function getCalendarData() {
   return out;
 }
 
+// One month of events + reminders, grouped by day, for the Calendar screen's month
+// grid (the colored dots on each day, and the day's own list underneath).
+function getCalendarMonth(month) {
+  const out = { month: String(month || ''), days: {} };
+  if (!/^\d{4}-\d{2}$/.test(out.month)) return out;
+  const add = (ds, item) => { (out.days[ds] || (out.days[ds] = [])).push(item); };
+
+  const first = Utilities.parseDate(out.month + '-01', tz_(), 'yyyy-MM-dd');
+  const next = new Date(first.getFullYear(), first.getMonth() + 1, 1);
+  // The grid also shows a few days from the surrounding months, so pad either side.
+  const gridStart = new Date(first.getTime() - 7 * 86400000);
+  const gridEnd = new Date(next.getTime() + 7 * 86400000);
+
+  try {
+    const cals = familyCalendars_();
+    const ppl = eventPeople_();
+    const seen = {};
+    cals.forEach(cal => {
+      cal.getEvents(gridStart, gridEnd).forEach(e => {
+        const key = cal.getId() + '|' + e.getId() + '|' + e.getStartTime().getTime();
+        if (seen[key]) return;
+        seen[key] = true;
+        const info = eventInfo_(e, cal.getId(), ppl);
+        const item = Object.assign({ type: 'event', color: CAL_CAT_HEX_[info.category] || CAL_CAT_HEX_.Other }, info);
+        // All-day end times are exclusive (the day after the last day), so back up 1ms to land on the real last day.
+        const lastMs = info.end - (info.allDay ? 1 : 0);
+        let cursor = Utilities.parseDate(dayStr_(new Date(info.start)), tz_(), 'yyyy-MM-dd');
+        const last = Utilities.parseDate(dayStr_(new Date(lastMs)), tz_(), 'yyyy-MM-dd');
+        for (let guard = 0; cursor.getTime() <= last.getTime() && guard < 60; guard++) {
+          add(dayStr_(cursor), item);
+          cursor = new Date(cursor.getTime() + 86400000);
+        }
+      });
+    });
+  } catch (err) { /* calendar not set up yet */ }
+
+  try {
+    getRemindersData().items.forEach(r => {
+      if (r.done || r.date < Utilities.formatDate(gridStart, tz_(), 'yyyy-MM-dd') || r.date > Utilities.formatDate(gridEnd, tz_(), 'yyyy-MM-dd')) return;
+      add(r.date, { type: 'reminder', title: r.name, allDay: true, start: Date.parse(r.date), recurring: false, color: CAL_CAT_HEX_.Other });
+    });
+  } catch (err) { /* Reminders tab not set up yet */ }
+
+  return out;
+}
+
 function cleanEvent_(f) {
   const title = String(f.title || '').trim();
   if (!title) throw new Error('Please enter a title');
   const ds = String(f.date || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) throw new Error('Please pick a date');
-  const c = { title: title, allDay: !!f.allDay, location: String(f.location || '').trim(), notes: String(f.notes || '').trim() };
+  // An end date is optional - events that last more than one day send it, everything else just reuses the start date.
+  const endDs = /^\d{4}-\d{2}-\d{2}$/.test(String(f.endDate || '')) && f.endDate >= ds ? f.endDate : ds;
+  const category = CAL_CATS_.indexOf(f.category) >= 0 ? f.category : 'Family';
+  const c = { title: title, allDay: !!f.allDay, location: String(f.location || '').trim(), notes: String(f.notes || '').trim(), category: category };
   const who = (Array.isArray(f.who) ? f.who : []).map(x => String(x).replace(/[,\n\r<]/g, ' ').trim().slice(0, 30)).filter(Boolean).slice(0, 10);
-  c.description = (who.length ? 'Who: ' + who.join(', ') + (c.notes ? '\n' : '') : '') + c.notes;
+  const meta = [];
+  if (who.length) meta.push('Who: ' + who.join(', '));
+  meta.push('Cat: ' + category);
+  c.description = meta.join('\n') + (c.notes ? '\n' + c.notes : '');
   if (c.allDay) {
     c.day = Utilities.parseDate(ds, tz_(), 'yyyy-MM-dd');
+    // Google Calendar's own end date for an all-day event is exclusive (the day after the last day)
+    c.endDay = new Date(Utilities.parseDate(endDs, tz_(), 'yyyy-MM-dd').getTime() + 86400000);
   } else {
     if (!/^\d{2}:\d{2}$/.test(String(f.start || ''))) throw new Error('Please pick a start time');
     c.start = Utilities.parseDate(ds + ' ' + f.start, tz_(), 'yyyy-MM-dd HH:mm');
-    c.end = /^\d{2}:\d{2}$/.test(String(f.end || '')) ? Utilities.parseDate(ds + ' ' + f.end, tz_(), 'yyyy-MM-dd HH:mm') : new Date(c.start.getTime() + 3600000);
+    c.end = /^\d{2}:\d{2}$/.test(String(f.end || '')) ? Utilities.parseDate(endDs + ' ' + f.end, tz_(), 'yyyy-MM-dd HH:mm') : new Date(c.start.getTime() + 3600000);
     if (c.end <= c.start) c.end = new Date(c.start.getTime() + 3600000);
   }
   return c;
@@ -1078,8 +1154,8 @@ function addCalendarEvent(f) {
   if (!cals.length) throw new Error('The Family calendar was not found');
   const cal = cals.filter(x => x.isOwnedByMe())[0] || cals[0];
   const opts = { location: c.location, description: c.description };
-  if (c.allDay) cal.createAllDayEvent(c.title, c.day, opts);
-  else cal.createEvent(c.title, c.start, c.end, opts);
+  const ev = c.allDay ? cal.createAllDayEvent(c.title, c.day, c.endDay, opts) : cal.createEvent(c.title, c.start, c.end, opts);
+  ev.setColor(CAL_CAT_COLOR_[c.category] || CalendarApp.EventColor.GRAY);
   return true;
 }
 
@@ -1095,9 +1171,10 @@ function updateCalendarEvent(calId, eventId, f) {
   const c = cleanEvent_(f);
   const ev = findEvent_(calId, eventId);
   ev.setTitle(c.title);
-  if (c.allDay) ev.setAllDayDate(c.day); else ev.setTime(c.start, c.end);
+  if (c.allDay) ev.setAllDayDates(c.day, c.endDay); else ev.setTime(c.start, c.end);
   ev.setLocation(c.location);
   ev.setDescription(c.description);
+  ev.setColor(CAL_CAT_COLOR_[c.category] || CalendarApp.EventColor.GRAY);
   return true;
 }
 
