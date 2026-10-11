@@ -60,6 +60,41 @@ function findRow_(sh, name) {
   return 0;
 }
 
+// People sheet gains a third "Photo" column on first use (older households won't have it yet).
+function peopleSheet_() {
+  const sh = ss_().getSheetByName('People');
+  if (sh.getLastColumn() < 3 || String(sh.getRange('C1').getValue()) !== 'Photo') {
+    sh.getRange('C1').setValue('Photo').setFontWeight('bold').setBackground('#3B4D37').setFontColor('#FFFFFF');
+  }
+  return sh;
+}
+
+function getPeoplePhotos_() {
+  const sh = peopleSheet_();
+  const n = sh.getLastRow();
+  const map = {};
+  if (n < 2) return map;
+  sh.getRange(2, 1, n - 1, 3).getValues().forEach(r => { if (r[0] && r[2]) map[r[0]] = r[2]; });
+  return map;
+}
+
+// Called from the home screen when someone taps a household member's avatar.
+// dataUrl is a small JPEG/PNG the client already resized to a thumbnail.
+function setPersonPhoto(name, dataUrl) {
+  name = String(name || '').trim();
+  if (!name) throw new Error('Missing name.');
+  dataUrl = String(dataUrl || '');
+  if (dataUrl && !/^data:image\/(png|jpe?g|webp);base64,/.test(dataUrl)) {
+    throw new Error('That image could not be used. Please try a different photo.');
+  }
+  if (dataUrl.length > 45000) throw new Error('That photo is too large. Please try a smaller one.');
+  const sh = peopleSheet_();
+  const row = findRow_(sh, name);
+  if (!row) throw new Error('That person was not found in the People tab.');
+  sh.getRange(row, 3).setValue(dataUrl);
+  return { name: name, photo: dataUrl };
+}
+
 function who_() {
   const email = (Session.getActiveUser().getEmail() || '').toLowerCase();
   const people = rows_('People');
@@ -85,6 +120,7 @@ function getHomeData() {
 
   out.me = who_();
   out.people = rows_('People').map(r => r[0]).filter(Boolean);
+  out.photos = getPeoplePhotos_();
 
   // Stock
   out.stock = rows_('Stock')
