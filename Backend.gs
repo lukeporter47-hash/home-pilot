@@ -199,6 +199,56 @@ function getHomeData() {
   return out;
 }
 
+// One short AI-written observation for the home screen ("PorterPilot noticed...").
+// Regenerated at most once a day per household (cached in the Settings tab) to keep this
+// cheap and fast. Fails silently (returns null) if the AI key isn't set up or the call
+// fails, so a missing/broken key never shows an error on the home screen.
+function getHouseholdInsight() {
+  const today = dayStr_(new Date());
+  if (getSetting_('InsightDate') === today) {
+    const cached = getSetting_('InsightText');
+    return cached ? { message: cached, action: getSetting_('InsightAction') || '' } : null;
+  }
+  const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!key) return null;
+
+  const home = getHomeData();
+  const parts = [];
+  const low = home.stock.filter(i => i.qty <= i.low).map(i => i.item);
+  if (low.length) parts.push('Low or out of stock: ' + low.slice(0, 12).join(', ') + '.');
+  if (home.meals.tonight) parts.push("Tonight's meal: " + home.meals.tonight + '.');
+  if (home.meals.tomorrow) parts.push("Tomorrow's meal: " + home.meals.tomorrow + '.');
+  const dueBills = home.bills.filter(b => !b.paid && b.daysLeft <= 3).map(b => b.name);
+  if (dueBills.length) parts.push('Bills due soon: ' + dueBills.join(', ') + '.');
+  const dueChores = home.chores.filter(c => c.status === 'due').map(c => c.name);
+  if (dueChores.length) parts.push('Chores due: ' + dueChores.join(', ') + '.');
+  const dueReminders = home.reminders.filter(r => r.daysLeft <= 3).map(r => r.name);
+  if (dueReminders.length) parts.push('Reminders coming up: ' + dueReminders.join(', ') + '.');
+
+  if (!parts.length) {
+    setSetting_('InsightDate', today); setSetting_('InsightText', ''); setSetting_('InsightAction', '');
+    return null;
+  }
+
+  const system = 'You are PorterPilot, a friendly household assistant. Given a short state-of-the-household summary, ' +
+    'write ONE short, specific, useful observation (max 160 characters) a family would actually want to see on their home screen. ' +
+    'Prefer connecting two facts (for example a low stock item needed for an upcoming meal) over just restating one fact. ' +
+    'Reply with JSON only, in exactly this shape: {"message":"...","action":"shop"|"chores"|"bills"|"calendar"|"meals"|""}. ' +
+    'Pick whichever action best matches what the message is about, or "" if none fits.';
+  const prompt = parts.join('\n');
+
+  let json;
+  try { json = geminiJson_(system, prompt); } catch (err) { return null; }
+  const message = String((json && json.message) || '').slice(0, 220);
+  let action = String((json && json.action) || '');
+  if (['shop', 'chores', 'bills', 'calendar', 'meals'].indexOf(action) < 0) action = '';
+
+  setSetting_('InsightDate', today);
+  setSetting_('InsightText', message);
+  setSetting_('InsightAction', action);
+  return message ? { message: message, action: action } : null;
+}
+
 /* ---------- Actions the home screen can save ---------- */
 
 function logBaby(type) {

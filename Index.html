@@ -141,6 +141,17 @@
   }
   .avatar-name { font-size: 12px; color: var(--muted); text-align: center; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+  .insight-card {
+    background: linear-gradient(135deg, var(--night) 0%, var(--accent) 140%);
+    border-radius: 18px; padding: 16px 18px; box-shadow: var(--shadow);
+  }
+  .insight-label { font-family: var(--font-display); font-weight: 700; font-size: 13px; color: var(--sun); margin: 0 0 6px; letter-spacing: .01em; }
+  .insight-msg { font-size: 15px; line-height: 1.4; color: var(--night-ink); margin: 0; }
+  .insight-btn {
+    margin-top: 12px; border: none; border-radius: 12px; padding: 9px 16px;
+    background: var(--surface); color: var(--ink); font-weight: 600; font-size: 14px; cursor: pointer;
+  }
+
   nav {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
     background: var(--surface); border-top: 1px solid var(--line);
@@ -341,6 +352,14 @@
   <section aria-labelledby="h-today">
     <h2 id="h-today">Today</h2>
     <ul class="rows" id="today"></ul>
+  </section>
+
+  <section id="insight-section" hidden>
+    <div class="insight-card">
+      <p class="insight-label">PorterPilot noticed...</p>
+      <p class="insight-msg" id="insight-msg"></p>
+      <button class="insight-btn" id="insight-action" hidden></button>
+    </div>
   </section>
 
   <section aria-labelledby="h-household">
@@ -933,6 +952,26 @@
       item.appendChild(el('div', 'avatar-name', name));
       box.appendChild(item);
     });
+  }
+
+  function renderInsight(data) {
+    var section = $('insight-section');
+    if (!data || !data.message) { section.hidden = true; return; }
+    $('insight-msg').textContent = data.message;
+    var btn = $('insight-action');
+    var labels = { shop: 'Add to shopping list', chores: 'See chores', bills: 'See bills', calendar: 'See calendar', meals: 'See meals' };
+    if (data.action && labels[data.action]) {
+      btn.textContent = labels[data.action]; btn.hidden = false;
+      btn.onclick = function () { go(data.action); };
+    } else { btn.hidden = true; btn.onclick = null; }
+    section.hidden = false;
+  }
+
+  function loadInsight() {
+    google.script.run
+      .withSuccessHandler(renderInsight)
+      .withFailureHandler(function () {}) // stay quiet if the AI isn't set up yet
+      .getHouseholdInsight();
   }
 
   function renderHighlights() {
@@ -3973,6 +4012,7 @@
   }
   renderHeader();
   load();
+  loadInsight(); // cached server-side per day, so no need to repeat this on the refresh interval below
   // Keep in step with what the other person logs
   setInterval(function () { if (!mode && !pageOpen() && !document.hidden) load(); }, 60000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden && !mode && !pageOpen()) load(); });
