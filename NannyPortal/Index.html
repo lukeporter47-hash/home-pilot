@@ -1,101 +1,200 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <base target="_top">
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    :root { --forest:#2F4F3E; --terracotta:#C1613C; --cream:#FBF6EE; --ink:#2A2A26; --muted:#7A776E; --line:#E4DCCB; }
-    * { box-sizing: border-box; }
-    body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--cream); color: var(--ink); }
-    .wrap { max-width: 480px; margin: 0 auto; padding: 20px 16px 40px; }
-    h1 { font-size: 22px; margin: 4px 0 2px; color: var(--forest); }
-    .sub { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
-    .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
-    .card h2 { font-size: 15px; margin: 0 0 8px; color: var(--forest); }
-    .instructions { white-space: pre-wrap; font-size: 15px; line-height: 1.5; }
-    .emrow { display:flex; justify-content:space-between; font-size: 15px; padding: 4px 0; }
-    .emrow b { color: var(--forest); }
-    label { display:block; font-weight:600; font-size: 14px; margin: 10px 0 4px; }
-    select, input, textarea { width:100%; border:1px solid var(--line); border-radius:10px; padding:10px; font-size:16px; font-family:inherit; background:#fff; color:var(--ink); }
-    button { width:100%; border:0; border-radius:12px; padding:13px; font-weight:600; font-size:16px; background: var(--terracotta); color:#fff; margin-top:12px; }
-    button[disabled] { opacity: .6; }
-    .loglist { list-style:none; margin:0; padding:0; }
-    .loglist li { padding:8px 0; border-top:1px solid var(--line); font-size:14px; }
-    .loglist li:first-child { border-top:0; }
-    .logtime { color: var(--muted); font-size:12px; }
-    .empty { color: var(--muted); font-size:14px; padding: 6px 0; }
-    .toast { position:fixed; left:16px; right:16px; bottom:16px; background:var(--forest); color:#fff; padding:12px 16px; border-radius:12px; text-align:center; font-size:14px; opacity:0; transform:translateY(8px); transition:.2s; pointer-events:none; }
-    .toast.show { opacity:1; transform:translateY(0); }
-  </style>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nanny Log</title>
+<meta name="theme-color" content="#55684B">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* Same design tokens as the main PorterPilot app, so this standalone
+     page looks like part of it even though it's a separate project. */
+  :root {
+    --bg: #ECE7D9;
+    --surface: #FFFDF8;
+    --ink: #2B3528;
+    --muted: #74806E;
+    --line: #E1DAC7;
+    --accent: #55684B;
+    --accent-ink: #FFFFFF;
+    --accent2: #C37B58;
+    --accent2-ink: #FFFFFF;
+    --warn: #B7391F;
+    --warn-bg: #FBE9E4;
+    --chip-bg: #EFEADA;
+    --shadow: 0 4px 16px rgba(43,53,40,.08);
+    --font-display: "Bricolage Grotesque", "Trebuchet MS", "Segoe UI", sans-serif;
+    --font-body: "Figtree", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1C211B; --surface: #262B22; --ink: #F1EEE3; --muted: #A9AC9C; --line: #3A3F33;
+      --accent: #8BAE78; --accent-ink: #13200F; --accent2: #E0935F; --accent2-ink: #241207;
+      --warn: #F08466; --warn-bg: #3A2019; --chip-bg: #2E3326; --shadow: none;
+    }
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--font-body); font-size: 16px; line-height: 1.45;
+    -webkit-text-size-adjust: 100%;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .app { max-width: 480px; margin: 0 auto; padding: 20px 18px 60px; }
+  .top-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 2px; }
+  .wordmark { font-family: var(--font-display); font-weight: 700; font-size: 19px; letter-spacing: -0.01em; color: var(--ink); margin: 0; }
+  .wordmark span { color: var(--accent2); }
+  .sub { color: var(--muted); font-size: 15px; margin: 2px 0 20px; }
+  h1 { font-family: var(--font-display); font-weight: 700; font-size: 26px; line-height: 1.1; margin: 0 0 2px; letter-spacing: -0.02em; }
+
+  section { margin-bottom: 26px; }
+  .sechead { font-family: var(--font-display); font-weight: 700; font-size: 15px; color: var(--muted); margin: 0 0 10px; }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-weight: 600; margin-bottom: 4px; }
+  .field select, .field textarea {
+    width: 100%; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+    border-radius: 12px; padding: 12px; font: inherit; font-size: 16px;
+  }
+  .field textarea { min-height: 90px; resize: vertical; }
+  .formbtns { display: grid; gap: 10px; margin-top: 8px; }
+  .savebtn { border: 0; border-radius: 14px; padding: 14px; background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 17px; }
+  .savebtn[disabled] { opacity: .6; cursor: not-allowed; }
+
+  .rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .row {
+    display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px; box-shadow: var(--shadow);
+  }
+  .row .main { flex: 1; min-width: 0; }
+  .row .title { font-weight: 600; }
+  .row .sub { color: var(--muted); font-size: 14px; margin: 0; }
+  .empty { color: var(--muted); padding: 14px; border: 1px dashed var(--line); border-radius: 14px; }
+  .retry { margin-top: 10px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 8px 16px; font-weight: 600; }
+
+  .info-card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 16px; box-shadow: var(--shadow); }
+  .info-card p { margin: 0; white-space: pre-wrap; }
+  .info-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; }
+  .info-row + .info-row { border-top: 1px solid var(--line); }
+  .info-row span:first-child { color: var(--muted); }
+  .info-row span:last-child { font-weight: 600; }
+
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 15px; font-weight: 500;
+    z-index: 40; opacity: 0; pointer-events: none; transition: opacity .18s ease; max-width: calc(100% - 32px); text-align: center;
+  }
+  .toast.show { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
 </head>
 <body>
-  <div class="wrap">
+  <div class="app">
+    <div class="top-brand">
+      <p class="wordmark">Porter<span>Pilot</span></p>
+    </div>
     <h1>Nanny log</h1>
-    <p class="sub">Log what happened today, and check the instructions below.</p>
+    <p class="sub">Log an entry below, and check instructions underneath.</p>
 
-    <div class="card" id="log-form-card">
-      <h2>Log an entry</h2>
-      <label for="nl-type">Type</label>
-      <select id="nl-type">
-        <option>Nap</option><option>Meal</option><option>Snack</option><option>Activity</option><option>Note</option>
-      </select>
-      <label for="nl-note">Note (optional)</label>
-      <textarea id="nl-note" rows="2" maxlength="200" placeholder="e.g. ate all his lunch, napped 2 hours"></textarea>
-      <button id="nl-save">Log it</button>
-    </div>
+    <section>
+      <div class="field">
+        <label for="nl-type">Type</label>
+        <select id="nl-type">
+          <option>Nap</option><option>Meal</option><option>Snack</option><option>Activity</option><option>Note</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="nl-note">Note (optional)</label>
+        <textarea id="nl-note" maxlength="200" placeholder="e.g. ate all his lunch, napped 2 hours"></textarea>
+      </div>
+      <div class="formbtns">
+        <button class="savebtn" id="nl-save">Log it</button>
+      </div>
+    </section>
 
-    <div class="card">
-      <h2>Today&rsquo;s log</h2>
-      <ul class="loglist" id="log-list"><li class="empty">Loading&hellip;</li></ul>
-    </div>
+    <section>
+      <p class="sechead">Today&rsquo;s log</p>
+      <ul class="rows" id="log-list"></ul>
+    </section>
 
-    <div class="card" id="instructions-card" style="display:none">
-      <h2>Instructions</h2>
-      <div class="instructions" id="instructions-text"></div>
-    </div>
+    <section id="instructions-section" style="display:none">
+      <p class="sechead">Instructions</p>
+      <div class="info-card"><p id="instructions-text"></p></div>
+    </section>
 
-    <div class="card" id="emergency-card" style="display:none">
-      <h2>Emergency contact</h2>
-      <div class="emrow"><span>Name</span><b id="em-name"></b></div>
-      <div class="emrow"><span>Phone</span><b id="em-phone"></b></div>
-    </div>
+    <section id="emergency-section" style="display:none">
+      <p class="sechead">Emergency contact</p>
+      <div class="info-card">
+        <div class="info-row"><span>Name</span><span id="em-name"></span></div>
+        <div class="info-row"><span>Phone</span><span id="em-phone"></span></div>
+      </div>
+    </section>
   </div>
   <div class="toast" id="toast"></div>
 
   <script>
+    var toastTimer;
     function toast(msg) {
       var t = document.getElementById('toast');
       t.textContent = msg; t.classList.add('show');
-      setTimeout(function () { t.classList.remove('show'); }, 2200);
+      clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2200);
     }
     function fmtTime(ts) {
-      return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+      return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+    function el(tag, cls, text) {
+      var e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
     }
     function render(d) {
       if (d.instructions) {
-        document.getElementById('instructions-card').style.display = '';
+        document.getElementById('instructions-section').style.display = '';
         document.getElementById('instructions-text').textContent = d.instructions;
       }
       if (d.emName || d.emPhone) {
-        document.getElementById('emergency-card').style.display = '';
+        document.getElementById('emergency-section').style.display = '';
         document.getElementById('em-name').textContent = d.emName || '—';
         document.getElementById('em-phone').textContent = d.emPhone || '—';
       }
       var list = document.getElementById('log-list');
       list.innerHTML = '';
       if (!d.log.length) {
-        var li = document.createElement('li'); li.className = 'empty'; li.textContent = 'Nothing logged yet today.';
-        list.appendChild(li); return;
+        list.appendChild(el('li', 'empty', 'Nothing logged yet today.'));
+        return;
       }
       d.log.forEach(function (e) {
-        var li = document.createElement('li');
-        li.innerHTML = '<span class="logtime">' + fmtTime(e.ts) + '</span> — <b>' + e.type + '</b>' + (e.note ? ': ' + e.note : '');
-        list.appendChild(li);
+        var li = el('li'), row = el('div', 'row'), main = el('div', 'main');
+        main.appendChild(el('div', 'title', e.type + (e.note ? ': ' + e.note : '')));
+        main.appendChild(el('div', 'sub', fmtTime(e.ts)));
+        row.appendChild(main); li.appendChild(row); list.appendChild(li);
       });
     }
     function load() {
-      google.script.run.withSuccessHandler(render).withFailureHandler(function () { toast('Could not load. Check your internet connection.'); }).getNannyPortalData();
+      var list = document.getElementById('log-list');
+      list.innerHTML = '';
+      list.appendChild(el('li', 'empty', 'Loading…'));
+      google.script.run
+        .withSuccessHandler(render)
+        .withFailureHandler(function () {
+          list.innerHTML = '';
+          var li = el('li', 'empty', 'Could not load. Check your internet connection.');
+          var rb = el('button', 'retry', 'Try again');
+          rb.addEventListener('click', load);
+          li.appendChild(document.createElement('br')); li.appendChild(rb);
+          list.appendChild(li);
+        })
+        .getNannyPortalData();
     }
     document.getElementById('nl-save').addEventListener('click', function () {
       var btn = this, type = document.getElementById('nl-type').value, note = document.getElementById('nl-note').value.trim();
