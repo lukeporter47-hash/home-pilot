@@ -100,13 +100,19 @@ project that each household admin deploys themselves:
 - It's deployed "Execute as: Me" (the admin), "Who has access: Anyone" —
   so the nanny needs no Google account and is never given any access to
   the household Sheet directly.
-- It only exposes two functions: reading today's log + her instructions/
-  emergency contact, and adding a new log entry. There is nothing else in
-  that project for her to reach.
-- It reads/writes the same `NannyLog` sheet tab the main app uses, so
-  entries she logs there show up in the main app's Nanny > Log tab
-  automatically, and the instructions/emergency contact she sees are
-  whatever the admin last saved from the main app's Nanny > Info tab.
+- It only exposes a handful of functions: reading today's log + her
+  instructions/emergency contact, logging a nap/snack/activity/note, and
+  logging a feed. There is nothing else in that project for her to reach.
+- It reads/writes the same `NannyLog` and `BabyLog` sheet tabs the main
+  app uses, so entries she logs there show up in the main app's Nanny >
+  Log and Baby screens automatically (and vice versa), and the
+  instructions/emergency contact she sees are whatever the admin last
+  saved from the main app's Nanny > Info tab.
+- Logging a feed (Formula, Growth milk, Juice, Water, Tea or Solids)
+  works exactly like the main app's Baby screen: pick what was given,
+  then pick an amount from quick-tap chips (or type one), and for Solids
+  say what he ate. It's the same validation and the same row shape as a
+  feed logged from the main app, so it's indistinguishable in the data.
 
 **Setup (per household, one-time, ~5 minutes)** — full instructions are
 also in the header comment of `NannyPortal/Code.gs`:

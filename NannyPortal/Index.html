@@ -66,9 +66,17 @@
     border-radius: 12px; padding: 12px; font: inherit; font-size: 16px;
   }
   .field textarea { min-height: 90px; resize: vertical; }
+  .field input[type="number"] { width: 100%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 12px; padding: 12px; font: inherit; font-size: 16px; }
   .formbtns { display: grid; gap: 10px; margin-top: 8px; }
   .savebtn { border: 0; border-radius: 14px; padding: 14px; background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 17px; }
   .savebtn[disabled] { opacity: .6; cursor: not-allowed; }
+
+  .optgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .opt { border: 2px solid var(--line); background: var(--surface); border-radius: 16px; padding: 16px 10px; font-weight: 600; font-size: 16px; }
+  .opt.on { border-color: var(--accent); background: var(--chip-bg); color: var(--accent); }
+  .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin: 6px 0; flex-wrap: wrap; }
+  .chip { flex: none; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 7px 14px; font-size: 14px; font-weight: 500; }
+  .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 
   .rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
   .row {
@@ -106,15 +114,26 @@
     <p class="sub">Log an entry below, and check instructions underneath.</p>
 
     <section>
+      <p class="sechead">Log a feed</p>
+      <div class="optgrid" id="feed-types"></div>
+      <div id="feed-amount-box"></div>
+      <div id="feed-food-box"></div>
+      <div class="formbtns">
+        <button class="savebtn" id="feed-save" disabled>Save feed</button>
+      </div>
+    </section>
+
+    <section>
+      <p class="sechead">Log something else</p>
       <div class="field">
         <label for="nl-type">Type</label>
         <select id="nl-type">
-          <option>Nap</option><option>Meal</option><option>Snack</option><option>Activity</option><option>Note</option>
+          <option>Nap</option><option>Snack</option><option>Activity</option><option>Note</option>
         </select>
       </div>
       <div class="field">
         <label for="nl-note">Note (optional)</label>
-        <textarea id="nl-note" maxlength="200" placeholder="e.g. ate all his lunch, napped 2 hours"></textarea>
+        <textarea id="nl-note" maxlength="200" placeholder="e.g. played outside for an hour"></textarea>
       </div>
       <div class="formbtns">
         <button class="savebtn" id="nl-save">Log it</button>
@@ -157,6 +176,81 @@
       if (text != null) e.textContent = text;
       return e;
     }
+
+    // ---------- Feed: same types and quick amounts as the main app's Baby screen ----------
+    var FEED_TYPES = [
+      { k: 'Formula', unit: 'ml', label: 'ml', quick: [60, 90, 120, 150, 180, 240], text: false },
+      { k: 'Growth milk', unit: 'ml', label: 'ml', quick: [60, 90, 120, 150, 180, 240], text: false },
+      { k: 'Juice', unit: 'ml', label: 'ml', quick: [30, 60, 90, 120, 150], text: false },
+      { k: 'Water', unit: 'ml', label: 'ml', quick: [30, 60, 90, 120, 150], text: false },
+      { k: 'Tea', unit: 'ml', label: 'ml', quick: [30, 60, 90, 120, 150], text: false },
+      { k: 'Solids', unit: 'spoons', label: 'spoons', quick: [2, 4, 6, 8, 10], text: true }
+    ];
+    var feedSel = null, feedAmt = '', feedFood = '';
+    var feedAmtBox = document.getElementById('feed-amount-box');
+    var feedFoodBox = document.getElementById('feed-food-box');
+    var feedSave = document.getElementById('feed-save');
+    var feedGrid = document.getElementById('feed-types');
+
+    function validateFeed() {
+      feedSave.disabled = !(feedSel && Number(feedAmt) > 0 && (!feedSel.text || feedFood.trim()));
+    }
+    function renderFeedFood() {
+      feedFoodBox.innerHTML = '';
+      if (!feedSel || !feedSel.text) return;
+      var d = el('div', 'field'), l = el('label', null, 'What did he eat?');
+      l.setAttribute('for', 'feed-food');
+      var inp = document.createElement('input'); inp.type = 'text'; inp.id = 'feed-food';
+      inp.placeholder = 'e.g. pumpkin and carrot puree'; inp.maxLength = 200; inp.value = feedFood;
+      inp.addEventListener('input', function (e) { feedFood = e.target.value; validateFeed(); });
+      d.appendChild(l); d.appendChild(inp); feedFoodBox.appendChild(d);
+    }
+    function renderFeedAmt() {
+      feedAmtBox.innerHTML = '';
+      if (!feedSel) return;
+      var d = el('div', 'field'), l = el('label', null, 'How much (' + feedSel.label + ')');
+      l.setAttribute('for', 'feed-amt');
+      var inp = document.createElement('input'); inp.type = 'number'; inp.id = 'feed-amt';
+      inp.min = '1'; inp.step = 'any'; inp.inputMode = 'decimal'; inp.value = feedAmt;
+      inp.addEventListener('input', function (e) { feedAmt = e.target.value; validateFeed(); });
+      d.appendChild(l); d.appendChild(inp); feedAmtBox.appendChild(d);
+      var chips = el('div', 'chips');
+      feedSel.quick.forEach(function (q) {
+        var c = el('button', 'chip' + (String(feedAmt) === String(q) ? ' on' : ''), q + ' ' + feedSel.unit);
+        c.addEventListener('click', function () { feedAmt = String(q); renderFeedAmt(); validateFeed(); });
+        chips.appendChild(c);
+      });
+      feedAmtBox.appendChild(chips);
+    }
+    FEED_TYPES.forEach(function (t) {
+      var b = el('button', 'opt', t.k);
+      b.addEventListener('click', function () {
+        feedSel = t; feedAmt = ''; feedFood = '';
+        Array.prototype.forEach.call(feedGrid.children, function (x) { x.classList.toggle('on', x === b); });
+        renderFeedFood(); renderFeedAmt(); validateFeed();
+      });
+      feedGrid.appendChild(b);
+    });
+    feedSave.addEventListener('click', function () {
+      var amount = Number(feedAmt), food = feedSel && feedSel.text ? feedFood.trim() : '';
+      if (!feedSel || !(amount > 0) || (feedSel.text && !food)) return;
+      feedSave.disabled = true; feedSave.textContent = 'Saving…';
+      google.script.run
+        .withSuccessHandler(function () {
+          feedSave.disabled = false; feedSave.textContent = 'Save feed';
+          toast(feedSel.k + ' logged: ' + amount + ' ' + feedSel.unit);
+          feedSel = null; feedAmt = ''; feedFood = '';
+          Array.prototype.forEach.call(feedGrid.children, function (x) { x.classList.remove('on'); });
+          feedAmtBox.innerHTML = ''; feedFoodBox.innerHTML = '';
+          load();
+        })
+        .withFailureHandler(function (err) {
+          feedSave.disabled = false; feedSave.textContent = 'Save feed';
+          toast(err && err.message ? err.message : 'Could not save. Try again.');
+        })
+        .addNannyPortalFeed(feedSel.k, amount, food);
+    });
+
     function render(d) {
       if (d.instructions) {
         document.getElementById('instructions-section').style.display = '';
@@ -175,7 +269,10 @@
       }
       d.log.forEach(function (e) {
         var li = el('li'), row = el('div', 'row'), main = el('div', 'main');
-        main.appendChild(el('div', 'title', e.type + (e.note ? ': ' + e.note : '')));
+        var title = e.type;
+        if (e.amount != null) title += ': ' + e.amount + ' ' + e.unit + (e.note ? ' (' + e.note + ')' : '');
+        else if (e.note) title += ': ' + e.note;
+        main.appendChild(el('div', 'title', title));
         main.appendChild(el('div', 'sub', fmtTime(e.ts)));
         row.appendChild(main); li.appendChild(row); list.appendChild(li);
       });
