@@ -236,6 +236,7 @@
   .sharebox button { flex: none; }
 
   .field select { width: 100%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 12px; padding: 12px; font: inherit; font-size: 16px; }
+  .field textarea { width: 100%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 12px; padding: 12px; font: inherit; font-size: 16px; min-height: 90px; resize: vertical; }
   .sechead { font-family: var(--font-display); font-weight: 700; font-size: 15px; color: var(--muted); margin: 8px 2px 0; }
   .sechead:first-child { margin-top: 0; }
   .tickbtn { width: 34px; height: 34px; border-radius: 10px; background: none; padding: 0; }
@@ -611,6 +612,18 @@
   </div>
 </div>
 
+<div class="page" id="nanny-page" role="dialog" aria-modal="true" aria-label="Nanny">
+  <div class="pinner">
+    <div class="phead">
+      <button class="pbtn" id="nanny-back">Back</button>
+      <h2>Nanny</h2>
+      <button class="pbtn strong" id="nanny-add">Add entry</button>
+    </div>
+    <div class="seg" id="nanny-tabs"></div>
+    <div id="nanny-body"></div>
+  </div>
+</div>
+
 <div class="page" id="suggest-page" role="dialog" aria-modal="true" aria-label="Suggestions">
   <div class="pinner">
     <div class="phead">
@@ -840,7 +853,8 @@
     contacts: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A15 15 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
     smart: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><circle cx="12" cy="15" r="2"/>',
     bar: '<path d="M5 4h14l-5.5 8v6h2v2H8.5v-2h2v-6z"/>',
-    suggest: '<path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/><path d="M9 20h6M10 22h4"/>'
+    suggest: '<path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/><path d="M9 20h6M10 22h4"/>',
+    nanny: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/><path d="M9 21v-3M15 21v-3"/>'
   };
   // The default order. wide = full width. off = hidden until you turn it on in Edit.
   var WIDGET_DEFS = [
@@ -857,6 +871,7 @@
     { id: 'pets', label: 'Pets', color: '--a-baby', act: 'pets' },
     { id: 'contacts', label: 'Contacts', color: '--a-cal', act: 'contacts' },
     { id: 'bar', label: 'Bar', color: '--a-stock', act: 'bar' },
+    { id: 'nanny', label: 'Nanny', color: '--a-baby', act: 'nanny' },
     { id: 'suggest', label: 'Suggestions', color: '--a-cal', act: 'suggest' },
     { id: 'smart', label: 'Smart home', color: '--a-smart', act: 'smart', off: true }
   ];
@@ -949,6 +964,11 @@
         detail: sg.newReplies ? 'On your suggestions' : 'Tell us how to improve the app', state: sg.newReplies ? 'warn' : '', act: 'suggest' };
     }
     if (id === 'contacts') return { head: 'Contacts', detail: 'Plumber, doctor, school', state: '' };
+    if (id === 'nanny') {
+      var nl = (S.nannyLast || null);
+      if (!nl) return { head: 'Nanny', detail: 'Log and instructions', state: '' };
+      return { head: nl.type + ' ' + ago(nl.ts), detail: nl.note ? shorten(nl.note, 28) : 'Tap to see the full log', state: '' };
+    }
     return { head: 'Set up', detail: 'Google Assistant', state: '' }; // smart home
   }
 
@@ -1219,6 +1239,8 @@
       buildMoreScreen(body);
     } else if (mode === 'activity') {
       buildActivityScreen(body);
+    } else if (mode === 'nanny-log-form') {
+      buildNannyLogForm(body);
     } else if (mode === 'contact-form') {
       buildContactForm(body);
     } else if (mode === 'expense-form') {
@@ -1277,7 +1299,7 @@
   $('close').addEventListener('click', closeSheet);
   $('scrim').addEventListener('click', function () { if (mode !== 'feed-form') closeSheet(); });
   function closeTopmost() {
-    if (mode) { if (mode !== 'feed-form') closeSheet(); } else if (stockOpen) closeStock(); else if (choresOpen) hideChoresPage(); else if (billsOpen) hideBillsPage(); else if (babyOpen) hideBabyPage(); else if (remindersOpen) hideRemindersPage(); else if (calendarOpen) hideCalendarPage(); else if (mealsOpen) hideMealsPage(); else if (docsOpen) hideDocsPage(); else if (moneyOpen) hideMoneyPage(); else if (contactsOpen) hideContactsPage(); else if (tripsOpen) hideTripsPage(); else if (petsOpen) hidePetsPage(); else if (barOpen) hideBarPage(); else if (suggestOpen) hideSuggestPage();
+    if (mode) { if (mode !== 'feed-form') closeSheet(); } else if (stockOpen) closeStock(); else if (choresOpen) hideChoresPage(); else if (billsOpen) hideBillsPage(); else if (babyOpen) hideBabyPage(); else if (remindersOpen) hideRemindersPage(); else if (calendarOpen) hideCalendarPage(); else if (mealsOpen) hideMealsPage(); else if (docsOpen) hideDocsPage(); else if (moneyOpen) hideMoneyPage(); else if (contactsOpen) hideContactsPage(); else if (tripsOpen) hideTripsPage(); else if (petsOpen) hidePetsPage(); else if (barOpen) hideBarPage(); else if (nannyOpen) hideNannyPage(); else if (suggestOpen) hideSuggestPage();
   }
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
@@ -3964,6 +3986,125 @@
     body.appendChild(save);
   }
 
+  // ---------- Nanny: a daily log she can fill in, plus her contact/instructions ----------
+  var nannyOpen = false, nannyTab = 'log', N = null, nannyError = false, lastFocusNanny = null;
+  var NANNY_LOG_TYPES = ['Nap', 'Meal', 'Snack', 'Activity', 'Note'];
+
+  function showNannyPage() {
+    if (!S) return;
+    pushNavState();
+    nannyOpen = true; nannyTab = 'log'; lastFocusNanny = document.activeElement;
+    $('nanny-page').classList.add('open'); document.body.style.overflow = 'hidden';
+    renderNannyPage(); loadNanny(); $('nanny-back').focus();
+  }
+  function hideNannyPage() {
+    nannyOpen = false; $('nanny-page').classList.remove('open'); document.body.style.overflow = '';
+    renderAll(); if (lastFocusNanny && lastFocusNanny.focus) lastFocusNanny.focus();
+  }
+  function loadNanny() {
+    google.script.run
+      .withSuccessHandler(function (d) { N = d; nannyError = false; if (nannyOpen && !mode) renderNannyPage(); })
+      .withFailureHandler(function () { nannyError = true; if (nannyOpen && !N && !mode) renderNannyPage(); })
+      .getNannyData();
+  }
+  function renderNannyPage() {
+    var tabs = $('nanny-tabs'); tabs.innerHTML = '';
+    [['log', 'Log'], ['info', 'Info']].forEach(function (t) {
+      var b = el('button', 'segbtn' + (nannyTab === t[0] ? ' on' : ''), t[1]);
+      b.setAttribute('aria-pressed', nannyTab === t[0] ? 'true' : 'false');
+      b.addEventListener('click', function () { nannyTab = t[0]; renderNannyPage(); });
+      tabs.appendChild(b);
+    });
+    $('nanny-add').style.display = nannyTab === 'log' ? '' : 'none';
+    var box = $('nanny-body'); box.innerHTML = '';
+    if (!N) {
+      if (nannyError) {
+        box.appendChild(el('div', 'empty', 'Could not load. Check your internet connection.'));
+        var rb = el('button', 'retry', 'Try again');
+        rb.addEventListener('click', function () { nannyError = false; renderNannyPage(); loadNanny(); });
+        box.appendChild(rb);
+      } else { box.appendChild(el('div', 'empty', 'Loading…')); }
+      return;
+    }
+    if (nannyTab === 'log') nannyLogTab(box); else nannyInfoTab(box);
+  }
+  $('nanny-back').addEventListener('click', hideNannyPage);
+  $('nanny-add').addEventListener('click', function () { if (N) openNannyLogForm(); });
+
+  function nannyLogTab(box) {
+    if (!N.log.length) { box.appendChild(el('div', 'empty', 'Nothing logged yet. Tap "Add entry" to log a nap, meal, snack, activity or note.')); return; }
+    var ul = el('ul', 'rows');
+    N.log.forEach(function (e) {
+      var li = el('li'), row = el('div', 'row'), main = el('div', 'main');
+      main.appendChild(el('div', 'title', e.type + (e.note ? ': ' + e.note : '')));
+      main.appendChild(el('div', 'sub', fmtTime(e.ts) + ' · by ' + (e.by || '—')));
+      row.appendChild(main);
+      var del = el('button', 'pbtn', 'Delete');
+      del.addEventListener('click', function () {
+        if (!confirm('Delete this entry?')) return;
+        del.disabled = true;
+        google.script.run
+          .withSuccessHandler(function () { toast('Entry deleted'); loadNanny(); })
+          .withFailureHandler(function (err) { errToast(err); del.disabled = false; })
+          .deleteNannyLog(e.row, e.ts, e.type);
+      });
+      row.appendChild(del);
+      li.appendChild(row); ul.appendChild(li);
+    });
+    box.appendChild(ul);
+  }
+
+  function textareaEl(label, id, val, hint) {
+    var d = el('div', 'field'), l = el('label', null, label); l.setAttribute('for', id);
+    var ta = document.createElement('textarea'); ta.id = id; ta.value = val;
+    d.appendChild(l); d.appendChild(ta);
+    if (hint) d.appendChild(el('div', 'hint', hint));
+    return d;
+  }
+
+  function nannyInfoTab(box) {
+    var i = N.info || {};
+    box.appendChild(fieldEl('Nanny’s name', 'nanny-info-name', 'text', i.name || '', '', { autocomplete: 'off' }));
+    box.appendChild(fieldEl('Phone number', 'nanny-info-phone', 'tel', i.phone || '', '', { autocomplete: 'off' }));
+    box.appendChild(fieldEl('Email (optional)', 'nanny-info-email', 'email', i.email || '', '', { autocomplete: 'off' }));
+    box.appendChild(fieldEl('Emergency contact name', 'nanny-info-emname', 'text', i.emName || '', '', { autocomplete: 'off' }));
+    box.appendChild(fieldEl('Emergency contact phone', 'nanny-info-emphone', 'tel', i.emPhone || '', '', { autocomplete: 'off' }));
+    box.appendChild(textareaEl('Instructions for the nanny', 'nanny-info-instructions', i.instructions || '', 'Allergies, routines, house rules — anything she should know.'));
+    var btns = el('div', 'formbtns');
+    var save = el('button', 'savebtn', 'Save');
+    save.addEventListener('click', function () {
+      var data = {
+        name: $('nanny-info-name').value.trim(), phone: $('nanny-info-phone').value.trim(),
+        email: $('nanny-info-email').value.trim(), emName: $('nanny-info-emname').value.trim(),
+        emPhone: $('nanny-info-emphone').value.trim(), instructions: $('nanny-info-instructions').value.trim()
+      };
+      save.disabled = true; save.textContent = 'Saving…';
+      google.script.run
+        .withSuccessHandler(function () { save.disabled = false; save.textContent = 'Save'; N.info = data; toast('Nanny info saved'); })
+        .withFailureHandler(function (err) { errToast(err); save.disabled = false; save.textContent = 'Save'; })
+        .saveNannyInfo(data);
+    });
+    btns.appendChild(save); box.appendChild(btns);
+  }
+
+  function openNannyLogForm() { openSheet('nanny-log-form'); }
+  function buildNannyLogForm(body) {
+    $('sheet-title').textContent = 'Log entry';
+    $('sheet-sub').textContent = 'What happened, and any notes for when you get home.';
+    body.appendChild(selectEl('Type', 'nl-type', NANNY_LOG_TYPES.map(function (t) { return { v: t, l: t }; }), NANNY_LOG_TYPES[0]));
+    body.appendChild(fieldEl('Note (optional)', 'nl-note', 'text', '', '', { maxlength: 200, autocomplete: 'off', placeholder: 'e.g. ate all his lunch, napped 2 hours' }));
+    var save = el('button', 'savebtn', 'Log it');
+    save.addEventListener('click', function () {
+      var type = $('nl-type').value, note = $('nl-note').value.trim();
+      save.disabled = true; save.textContent = 'Saving…';
+      google.script.run
+        .withSuccessHandler(function () { toast(type + ' logged'); closeSheet(); loadNanny(); })
+        .withFailureHandler(function (err) { errToast(err); save.disabled = false; save.textContent = 'Log it'; })
+        .logNannyEntry(type, note);
+    });
+    body.appendChild(save);
+  }
+
   // ---------- Suggestions: a private box between whoever wrote it and the admin ----------
   var suggestOpen = false, SG = null, suggestError = false, lastFocusSuggest = null, replyDraft = null;
   var seenReplies = {}; try { seenReplies = JSON.parse(localStorage.getItem('householdSeenReplies') || '{}'); } catch (e) { seenReplies = {}; }
@@ -4181,6 +4322,7 @@
     if (t === 'trips') { showTripsPage(); return; }
     if (t === 'pets') { showPetsPage(); return; }
     if (t === 'bar') { showBarPage(); return; }
+    if (t === 'nanny') { showNannyPage(); return; }
     if (t === 'suggest') { showSuggestPage(); return; }
     if (t === 'bar-shop') { showBarPage(); setTimeout(function () { openSheet('bar-shop'); }, 0); return; }
     if (t === 'more') { openSheet('more'); return; }

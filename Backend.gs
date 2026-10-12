@@ -150,6 +150,20 @@ function getHomeData() {
   out.pendingFeeds.sort((a, b) => a.ts - b.ts);
   out.last = { feed: last.Feed, nappy: last.Nappy, sleep: last.Sleep };
 
+  // Nanny: the single most recent log entry, for the home screen tile
+  out.nannyLast = null;
+  try {
+    const nsh = ss_().getSheetByName('NannyLog');
+    if (nsh) {
+      const nn = nsh.getLastRow();
+      if (nn >= 2) {
+        const v = nsh.getRange(nn, 1, 1, 3).getValues()[0];
+        const ts = v[0] instanceof Date ? v[0].getTime() : 0;
+        if (ts) out.nannyLast = { ts: ts, type: String(v[1] || ''), note: String(v[2] || '') };
+      }
+    }
+  } catch (err) { /* NannyLog not set up yet */ }
+
   // Chores
   const weekAgo = now.getTime() - 7 * 86400000;
   let weekDone = 0;
@@ -978,6 +992,77 @@ function setSetting_(key, value) {
     }
     sh.appendRow([key, value]);
   });
+}
+
+/* ---------- Nanny screen: a daily log she can fill in, plus her contact/instructions ---------- */
+
+const NANNY_LOG_TYPES = ['Nap', 'Meal', 'Snack', 'Activity', 'Note'];
+const NANNY_INFO_KEYS = ['NannyName', 'NannyPhone', 'NannyEmail', 'NannyEmergencyName', 'NannyEmergencyPhone', 'NannyInstructions'];
+
+function nannyLogSheet_() { return ensureSheet_('NannyLog', ['Timestamp', 'Type', 'Note', 'By']); }
+
+function getNannyData() {
+  const out = {
+    info: {
+      name: getSetting_('NannyName'), phone: getSetting_('NannyPhone'), email: getSetting_('NannyEmail'),
+      emName: getSetting_('NannyEmergencyName'), emPhone: getSetting_('NannyEmergencyPhone'), instructions: getSetting_('NannyInstructions')
+    },
+    log: []
+  };
+  const sh = nannyLogSheet_();
+  const n = sh.getLastRow();
+  if (n >= 2) {
+    const cutoff = Date.now() - 30 * 86400000;
+    sh.getRange(2, 1, n - 1, 4).getValues().forEach((r, i) => {
+      const t = r[0] instanceof Date ? r[0].getTime() : 0;
+      if (t >= cutoff && NANNY_LOG_TYPES.indexOf(r[1]) >= 0) {
+        out.log.push({ row: i + 2, ts: t, type: r[1], note: r[2] ? String(r[2]) : '', by: r[3] ? String(r[3]) : '' });
+      }
+    });
+    out.log.sort((a, b) => b.ts - a.ts);
+  }
+  return out;
+}
+
+// Save a nap, meal, snack, activity or note to the nanny's log
+function logNannyEntry(type, note) {
+  if (NANNY_LOG_TYPES.indexOf(type) < 0) throw new Error('Please choose a type');
+  const n = String(note || '').trim().slice(0, 200);
+  const sh = nannyLogSheet_();
+  return withLock_(() => {
+    sh.appendRow([new Date(), type, n, who_()]);
+    logActivity_('logged a nanny entry: ' + type.toLowerCase() + (n ? ' (' + n + ')' : ''));
+    return true;
+  });
+}
+
+function deleteNannyLog(row, ts, type) {
+  return withLock_(() => {
+    const sh = nannyLogSheet_();
+    if (row < 2 || row > sh.getLastRow()) throw new Error('That entry has changed. Please refresh.');
+    const v = sh.getRange(row, 1, 1, 2).getValues()[0];
+    const t = v[0] instanceof Date ? v[0].getTime() : 0;
+    if (t !== Number(ts) || v[1] !== type) throw new Error('That entry has changed. Please refresh.');
+    sh.deleteRow(row);
+    return true;
+  });
+}
+
+// Save the nanny's contact details, emergency contact and instructions (a handful of Settings rows)
+function saveNannyInfo(f) {
+  const clean = {
+    NannyName: String((f && f.name) || '').trim().slice(0, 100),
+    NannyPhone: String((f && f.phone) || '').trim().slice(0, 40),
+    NannyEmail: String((f && f.email) || '').trim().slice(0, 150),
+    NannyEmergencyName: String((f && f.emName) || '').trim().slice(0, 100),
+    NannyEmergencyPhone: String((f && f.emPhone) || '').trim().slice(0, 40),
+    NannyInstructions: String((f && f.instructions) || '').trim().slice(0, 2000)
+  };
+  withLock_(() => {
+    NANNY_INFO_KEYS.forEach(k => setSetting_(k, clean[k]));
+  });
+  logActivity_('updated the nanny’s info');
+  return true;
 }
 
 // Finds the family calendar. Google's own built-in "Family" calendar is ignored,
