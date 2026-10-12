@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root { --forest:#2F4F3E; --terracotta:#C1613C; --cream:#FBF6EE; --ink:#2A2A26; --muted:#7A776E; --line:#E4DCCB; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--cream); color: var(--ink); }
+    .wrap { max-width: 480px; margin: 0 auto; padding: 20px 16px 40px; }
+    h1 { font-size: 22px; margin: 4px 0 2px; color: var(--forest); }
+    .sub { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+    .card h2 { font-size: 15px; margin: 0 0 8px; color: var(--forest); }
+    .instructions { white-space: pre-wrap; font-size: 15px; line-height: 1.5; }
+    .emrow { display:flex; justify-content:space-between; font-size: 15px; padding: 4px 0; }
+    .emrow b { color: var(--forest); }
+    label { display:block; font-weight:600; font-size: 14px; margin: 10px 0 4px; }
+    select, input, textarea { width:100%; border:1px solid var(--line); border-radius:10px; padding:10px; font-size:16px; font-family:inherit; background:#fff; color:var(--ink); }
+    button { width:100%; border:0; border-radius:12px; padding:13px; font-weight:600; font-size:16px; background: var(--terracotta); color:#fff; margin-top:12px; }
+    button[disabled] { opacity: .6; }
+    .loglist { list-style:none; margin:0; padding:0; }
+    .loglist li { padding:8px 0; border-top:1px solid var(--line); font-size:14px; }
+    .loglist li:first-child { border-top:0; }
+    .logtime { color: var(--muted); font-size:12px; }
+    .empty { color: var(--muted); font-size:14px; padding: 6px 0; }
+    .toast { position:fixed; left:16px; right:16px; bottom:16px; background:var(--forest); color:#fff; padding:12px 16px; border-radius:12px; text-align:center; font-size:14px; opacity:0; transform:translateY(8px); transition:.2s; pointer-events:none; }
+    .toast.show { opacity:1; transform:translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Nanny log</h1>
+    <p class="sub">Log what happened today, and check the instructions below.</p>
+
+    <div class="card" id="log-form-card">
+      <h2>Log an entry</h2>
+      <label for="nl-type">Type</label>
+      <select id="nl-type">
+        <option>Nap</option><option>Meal</option><option>Snack</option><option>Activity</option><option>Note</option>
+      </select>
+      <label for="nl-note">Note (optional)</label>
+      <textarea id="nl-note" rows="2" maxlength="200" placeholder="e.g. ate all his lunch, napped 2 hours"></textarea>
+      <button id="nl-save">Log it</button>
+    </div>
+
+    <div class="card">
+      <h2>Today&rsquo;s log</h2>
+      <ul class="loglist" id="log-list"><li class="empty">Loading&hellip;</li></ul>
+    </div>
+
+    <div class="card" id="instructions-card" style="display:none">
+      <h2>Instructions</h2>
+      <div class="instructions" id="instructions-text"></div>
+    </div>
+
+    <div class="card" id="emergency-card" style="display:none">
+      <h2>Emergency contact</h2>
+      <div class="emrow"><span>Name</span><b id="em-name"></b></div>
+      <div class="emrow"><span>Phone</span><b id="em-phone"></b></div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    function toast(msg) {
+      var t = document.getElementById('toast');
+      t.textContent = msg; t.classList.add('show');
+      setTimeout(function () { t.classList.remove('show'); }, 2200);
+    }
+    function fmtTime(ts) {
+      return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+    function render(d) {
+      if (d.instructions) {
+        document.getElementById('instructions-card').style.display = '';
+        document.getElementById('instructions-text').textContent = d.instructions;
+      }
+      if (d.emName || d.emPhone) {
+        document.getElementById('emergency-card').style.display = '';
+        document.getElementById('em-name').textContent = d.emName || '—';
+        document.getElementById('em-phone').textContent = d.emPhone || '—';
+      }
+      var list = document.getElementById('log-list');
+      list.innerHTML = '';
+      if (!d.log.length) {
+        var li = document.createElement('li'); li.className = 'empty'; li.textContent = 'Nothing logged yet today.';
+        list.appendChild(li); return;
+      }
+      d.log.forEach(function (e) {
+        var li = document.createElement('li');
+        li.innerHTML = '<span class="logtime">' + fmtTime(e.ts) + '</span> — <b>' + e.type + '</b>' + (e.note ? ': ' + e.note : '');
+        list.appendChild(li);
+      });
+    }
+    function load() {
+      google.script.run.withSuccessHandler(render).withFailureHandler(function () { toast('Could not load. Check your internet connection.'); }).getNannyPortalData();
+    }
+    document.getElementById('nl-save').addEventListener('click', function () {
+      var btn = this, type = document.getElementById('nl-type').value, note = document.getElementById('nl-note').value.trim();
+      btn.disabled = true; btn.textContent = 'Saving…';
+      google.script.run
+        .withSuccessHandler(function () {
+          btn.disabled = false; btn.textContent = 'Log it';
+          document.getElementById('nl-note').value = '';
+          toast(type + ' logged'); load();
+        })
+        .withFailureHandler(function (err) {
+          btn.disabled = false; btn.textContent = 'Log it';
+          toast(err && err.message ? err.message : 'Could not save. Try again.');
+        })
+        .addNannyPortalEntry(type, note);
+    });
+    load();
+  </script>
+</body>
+</html>

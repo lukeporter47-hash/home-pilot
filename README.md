@@ -48,6 +48,7 @@ visitor's* household Spreadsheet. Nothing else had to change.
 | `Index.html` | The full app, unchanged from the original single-household build |
 | `appsscript.json` | Manifest — sets the web app execution/access mode |
 | `assets/logo.png` | PorterPilot logo mark |
+| `NannyPortal/Code.gs`, `NannyPortal/Index.html` | A standalone, separate Apps Script project (not deployed as part of this one) giving a nanny her own log/instructions page **without** ever granting her access to the household Sheet. See "Nanny Portal" below |
 
 ## Deploying
 
@@ -83,6 +84,49 @@ After deploying, open the generated web app URL — that's the link you
 share with other households. The first person to open it for a given
 household becomes that household's admin.
 
+## Nanny Portal (keeping the nanny out of the household Sheet)
+
+The main app's Nanny screen (daily log + her contact/emergency info) is
+built into `Backend.gs`/`Index.html` like any other feature — but to use
+*that* screen, the nanny would need to be a full household member, which
+under this app's `executeAs: USER_ACCESSING` model means giving her her
+own Google Sign-In access to edit the entire household Spreadsheet,
+Money/Bills/Documents/Contacts included. There's no way to hide tabs from
+someone who can open the Sheet itself.
+
+`NannyPortal/` solves this with a second, tiny, **separate** Apps Script
+project that each household admin deploys themselves:
+
+- It's deployed "Execute as: Me" (the admin), "Who has access: Anyone" —
+  so the nanny needs no Google account and is never given any access to
+  the household Sheet directly.
+- It only exposes two functions: reading today's log + her instructions/
+  emergency contact, and adding a new log entry. There is nothing else in
+  that project for her to reach.
+- It reads/writes the same `NannyLog` sheet tab the main app uses, so
+  entries she logs there show up in the main app's Nanny > Log tab
+  automatically, and the instructions/emergency contact she sees are
+  whatever the admin last saved from the main app's Nanny > Info tab.
+
+**Setup (per household, one-time, ~5 minutes)** — full instructions are
+also in the header comment of `NannyPortal/Code.gs`:
+
+1. Go to [script.google.com](https://script.google.com) and click **New
+   project**.
+2. Delete the placeholder code in `Code.gs` and paste in the contents of
+   `NannyPortal/Code.gs` from this repo.
+3. Click the **+** next to Files → **HTML**, name the new file exactly
+   `Index` (Apps Script adds the `.html` itself), and paste in the
+   contents of `NannyPortal/Index.html`.
+4. In `Code.gs`, set `SPREADSHEET_ID` to your household Sheet's ID — the
+   same ID that appears after `?hh=` in your PorterPilot invite link.
+5. **Deploy ▸ New deployment ▸** type **Web app**, set:
+   - Execute as: **Me**
+   - Who has access: **Anyone**
+6. Click **Deploy**, authorize with your own Google account when asked,
+   then copy the Web app URL — that's the link to send your nanny.
+   Nothing else is reachable from it.
+
 ## Status
 
 - ✅ Multi-tenant account layer (create/join/leave a household)
@@ -99,3 +143,7 @@ household becomes that household's admin.
   needs its own separate Apps Script deployment — it defines its own
   `doGet`/`doPost`, which would collide with this project's router if
   merged into the same one
+- ⚠️ The Nanny Portal (`NannyPortal/`) is self-service per household, like
+  the `Notify.gs` triggers — each admin who wants to keep their nanny off
+  the household Sheet deploys it themselves as its own separate Apps
+  Script project (see "Nanny Portal" above)
