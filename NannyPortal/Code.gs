@@ -7,13 +7,13 @@
  * household Google Sheet, including Money, Bills, Documents and Contacts).
  *
  * This script only ever touches a few things in your household Sheet: the
- * NannyLog tab (so she can log naps/meals/snacks/activities/notes, which
- * show up automatically in the main PorterPilot app's Nanny screen), the
- * BabyLog tab (so a feed she logs — what and how much — shows up exactly
- * like one logged from the main app's Baby screen, amount and all), and a
- * handful of rows in the Settings tab (her instructions and emergency
- * contact) — which she can only ever READ here. You still edit those from
- * the main app's Nanny > Info tab.
+ * NannyLog tab (so she can log snacks/activities/notes, which show up
+ * automatically in the main PorterPilot app's Nanny screen), the BabyLog
+ * tab (so a feed, nappy or nap she logs shows up exactly like one logged
+ * from the main app's Baby screen — amounts, kinds and durations all
+ * included), and a handful of rows in the Settings tab (her instructions
+ * and emergency contact) — which she can only ever READ here. You still
+ * edit those from the main app's Nanny > Info tab.
  *
  * Because this runs as its own Apps Script project deployed "Execute as:
  * Me", it can read/write your household Sheet using YOUR authorization,
@@ -111,6 +111,27 @@ function feedDetails_(feedType, amount, food) {
   return { feedType: feedType, amount: a, unit: unit, note: note };
 }
 
+const NAPPY_KINDS = ['Pee', 'Poop', 'Both'];
+
+// Same validation as the main app: a nappy must say what was in it.
+function nappyDetails_(kind, note) {
+  if (NAPPY_KINDS.indexOf(kind) < 0) throw new Error('Please choose pee, poop or both');
+  return { kind: kind, note: String(note || '').trim().slice(0, 200) };
+}
+
+const SLEEP_QUALITY = ['Well', 'Restless', 'Woke often', 'Hard to settle'];
+
+// Same validation as the main app: a nap must say how long (minutes).
+// How he slept and a note are optional.
+function sleepDetails_(quality, minutes, note) {
+  const m = Math.round(Number(minutes));
+  if (!(m >= 1 && m <= 1440)) throw new Error('Please enter how long he slept');
+  return {
+    quality: SLEEP_QUALITY.indexOf(quality) >= 0 ? quality : '',
+    minutes: m, note: String(note || '').trim().slice(0, 200)
+  };
+}
+
 // Everything the portal shows her: instructions, emergency contact, and
 // today's log entries (NannyLog + any feeds she's logged) so she can see
 // what's already been done.
@@ -142,11 +163,20 @@ function getNannyPortalData() {
     if (bn >= 2) {
       bsh.getRange(2, 1, bn - 1, 7).getValues().forEach(r => {
         const t = r[0] instanceof Date ? r[0].getTime() : 0;
-        if (t >= cutoff && r[1] === 'Feed') {
+        if (t < cutoff) return;
+        if (r[1] === 'Feed') {
           out.log.push({
             ts: t, type: r[4] ? String(r[4]) : 'Feed',
             note: r[3] ? String(r[3]) : '',
             amount: r[5] === '' ? null : Number(r[5]), unit: r[6] ? String(r[6]) : ''
+          });
+        } else if (r[1] === 'Nappy') {
+          out.log.push({ ts: t, type: 'Nappy: ' + (r[4] ? String(r[4]) : ''), note: r[3] ? String(r[3]) : '' });
+        } else if (r[1] === 'Sleep') {
+          const mins = r[5] === '' ? null : Number(r[5]);
+          out.log.push({
+            ts: t, type: 'Nap' + (mins != null ? ' (' + mins + ' min)' : ''),
+            note: [r[4] ? String(r[4]) : '', r[3] ? String(r[3]) : ''].filter(Boolean).join(', ')
           });
         }
       });
@@ -175,6 +205,26 @@ function addNannyPortalFeed(feedType, amount, food) {
   const sh = babyLogSheet_();
   return withLock_(() => {
     sh.appendRow([new Date(), 'Feed', 'Nanny', d.note, d.feedType, d.amount, d.unit]);
+    return true;
+  });
+}
+
+// Log a nappy change — same validation and row shape as the main app.
+function addNannyPortalNappy(kind, note) {
+  const d = nappyDetails_(kind, note);
+  const sh = babyLogSheet_();
+  return withLock_(() => {
+    sh.appendRow([new Date(), 'Nappy', 'Nanny', d.note, d.kind, '', '']);
+    return true;
+  });
+}
+
+// Log a nap — same validation and row shape as the main app's Sleep entry.
+function addNannyPortalSleep(quality, minutes, note) {
+  const d = sleepDetails_(quality, minutes, note);
+  const sh = babyLogSheet_();
+  return withLock_(() => {
+    sh.appendRow([new Date(), 'Sleep', 'Nanny', d.note, d.quality, d.minutes, 'min']);
     return true;
   });
 }

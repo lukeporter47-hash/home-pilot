@@ -66,7 +66,7 @@
     border-radius: 12px; padding: 12px; font: inherit; font-size: 16px;
   }
   .field textarea { min-height: 90px; resize: vertical; }
-  .field input[type="number"] { width: 100%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 12px; padding: 12px; font: inherit; font-size: 16px; }
+  .field input[type="number"], .field input[type="text"] { width: 100%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 12px; padding: 12px; font: inherit; font-size: 16px; }
   .formbtns { display: grid; gap: 10px; margin-top: 8px; }
   .savebtn { border: 0; border-radius: 14px; padding: 14px; background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 17px; }
   .savebtn[disabled] { opacity: .6; cursor: not-allowed; }
@@ -124,11 +124,44 @@
     </section>
 
     <section>
+      <p class="sechead">Log a nappy</p>
+      <div class="optgrid" id="nappy-kinds" style="grid-template-columns:repeat(3,1fr)"></div>
+      <div class="field">
+        <label for="nappy-note">Note (optional)</label>
+        <input type="text" id="nappy-note" maxlength="200" placeholder="e.g. runny, rash">
+      </div>
+      <div class="chips" id="nappy-note-chips"></div>
+      <div class="formbtns">
+        <button class="savebtn" id="nappy-save" disabled>Save nappy</button>
+      </div>
+    </section>
+
+    <section>
+      <p class="sechead">Log a nap</p>
+      <div class="chips" id="nap-quick"></div>
+      <div class="field">
+        <label for="nap-min">Or type the minutes</label>
+        <input type="text" id="nap-min" inputmode="numeric" placeholder="0">
+      </div>
+      <div class="field">
+        <label>How did he sleep? (optional)</label>
+        <div class="chips" id="nap-quality"></div>
+      </div>
+      <div class="field">
+        <label for="nap-note">Note (optional)</label>
+        <input type="text" id="nap-note" maxlength="200">
+      </div>
+      <div class="formbtns">
+        <button class="savebtn" id="nap-save" disabled>Save nap</button>
+      </div>
+    </section>
+
+    <section>
       <p class="sechead">Log something else</p>
       <div class="field">
         <label for="nl-type">Type</label>
         <select id="nl-type">
-          <option>Nap</option><option>Snack</option><option>Activity</option><option>Note</option>
+          <option>Snack</option><option>Activity</option><option>Note</option>
         </select>
       </div>
       <div class="field">
@@ -250,6 +283,94 @@
         })
         .addNannyPortalFeed(feedSel.k, amount, food);
     });
+
+    // ---------- Nappy: same kinds and quick-tap notes as the main app ----------
+    var NAPPY_KINDS = ['Pee', 'Poop', 'Both'];
+    var NAPPY_NOTES = ['Normal', 'Runny', 'Diarrhea', 'Hard', 'Rash'];
+    var nappyKind = '';
+    var nappyGrid = document.getElementById('nappy-kinds');
+    var nappyNote = document.getElementById('nappy-note');
+    var nappySave = document.getElementById('nappy-save');
+    NAPPY_KINDS.forEach(function (k) {
+      var b = el('button', 'opt', k);
+      b.addEventListener('click', function () {
+        nappyKind = k;
+        Array.prototype.forEach.call(nappyGrid.children, function (x) { x.classList.toggle('on', x === b); });
+        nappySave.disabled = false;
+      });
+      nappyGrid.appendChild(b);
+    });
+    var nappyNoteChips = document.getElementById('nappy-note-chips');
+    NAPPY_NOTES.forEach(function (w) {
+      var c = el('button', 'chip', w);
+      c.addEventListener('click', function () { nappyNote.value = w; });
+      nappyNoteChips.appendChild(c);
+    });
+    nappySave.addEventListener('click', function () {
+      if (!nappyKind) return;
+      var note = nappyNote.value.trim();
+      nappySave.disabled = true; nappySave.textContent = 'Saving…';
+      google.script.run
+        .withSuccessHandler(function () {
+          toast('Nappy logged: ' + nappyKind);
+          nappyKind = ''; nappyNote.value = '';
+          Array.prototype.forEach.call(nappyGrid.children, function (x) { x.classList.remove('on'); });
+          nappySave.disabled = true; nappySave.textContent = 'Save nappy';
+          load();
+        })
+        .withFailureHandler(function (err) {
+          nappySave.disabled = false; nappySave.textContent = 'Save nappy';
+          toast(err && err.message ? err.message : 'Could not save. Try again.');
+        })
+        .addNannyPortalNappy(nappyKind, note);
+    });
+
+    // ---------- Nap: same quick durations and quality as the main app's Sleep entry ----------
+    var SLEEP_QUALITY = ['Well', 'Restless', 'Woke often', 'Hard to settle'];
+    var SLEEP_QUICK = [{ l: '15 min', m: 15 }, { l: '30 min', m: 30 }, { l: '45 min', m: 45 }, { l: '1 h', m: 60 }, { l: '1 h 30', m: 90 }, { l: '2 h', m: 120 }, { l: '3 h', m: 180 }];
+    var napMinutes = 0, napQuality = '';
+    var napQuick = document.getElementById('nap-quick');
+    var napMin = document.getElementById('nap-min');
+    var napQualityBox = document.getElementById('nap-quality');
+    var napNote = document.getElementById('nap-note');
+    var napSave = document.getElementById('nap-save');
+    function validateNap() { napSave.disabled = !(napMinutes >= 1 && napMinutes <= 1440); }
+    function renderNapQuick() {
+      napQuick.innerHTML = '';
+      SLEEP_QUICK.forEach(function (q) {
+        var c = el('button', 'chip' + (napMinutes === q.m ? ' on' : ''), q.l);
+        c.addEventListener('click', function () { napMinutes = q.m; napMin.value = String(q.m); renderNapQuick(); validateNap(); });
+        napQuick.appendChild(c);
+      });
+    }
+    function renderNapQuality() {
+      napQualityBox.innerHTML = '';
+      SLEEP_QUALITY.forEach(function (w) {
+        var c = el('button', 'chip' + (napQuality === w ? ' on' : ''), w);
+        c.addEventListener('click', function () { napQuality = napQuality === w ? '' : w; renderNapQuality(); });
+        napQualityBox.appendChild(c);
+      });
+    }
+    napMin.addEventListener('input', function (e) { napMinutes = parseInt(e.target.value, 10) || 0; renderNapQuick(); validateNap(); });
+    napSave.addEventListener('click', function () {
+      if (!(napMinutes >= 1 && napMinutes <= 1440)) return;
+      var note = napNote.value.trim();
+      napSave.disabled = true; napSave.textContent = 'Saving…';
+      google.script.run
+        .withSuccessHandler(function () {
+          toast('Nap logged: ' + napMinutes + ' min');
+          napMinutes = 0; napQuality = ''; napMin.value = ''; napNote.value = '';
+          renderNapQuick(); renderNapQuality();
+          napSave.disabled = true; napSave.textContent = 'Save nap';
+          load();
+        })
+        .withFailureHandler(function (err) {
+          napSave.disabled = false; napSave.textContent = 'Save nap';
+          toast(err && err.message ? err.message : 'Could not save. Try again.');
+        })
+        .addNannyPortalSleep(napQuality, napMinutes, note);
+    });
+    renderNapQuick(); renderNapQuality();
 
     function render(d) {
       if (d.instructions) {
